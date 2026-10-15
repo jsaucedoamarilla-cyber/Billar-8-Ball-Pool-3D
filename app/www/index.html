@@ -659,6 +659,10 @@ body.streamer::after{content:'';position:absolute;inset:0;pointer-events:none;
 #game{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 #login{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 </style>
+<script src="firebase-config.js"></script>
+<script src="vendor/firebase-app-compat.js"></script>
+<script src="vendor/firebase-auth-compat.js"></script>
+<script src="vendor/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -711,6 +715,7 @@ body.streamer::after{content:'';position:absolute;inset:0;pointer-events:none;
       <div id="chatLog"></div>
       <div id="chatFr"></div>
       <div class="chatRowWrap" id="chatRow"><input id="chatIn" maxlength="60" placeholder="Escribile a tu rival" onkeydown="if(event.key==='Enter')chatSend()"><button class="b1" onclick="chatSend()">Enviar</button></div>
+      <div id="chatMod" style="display:none;margin-top:4px"><button class="b6" style="width:100%;padding:5px;font-size:11px" onclick="modRival()">🚩 Reportar o 🚫 bloquear rival</button></div>
     </div>
     <div id="gm"></div>
     <div id="mentorTip"></div>
@@ -1330,7 +1335,7 @@ const LOGROS_ESPECTADOR = [
   {id:'gold-10k',n:'💎 Diamante',d:'Regalá 10.000 🪙 en total',check:(s) => s.totalRegalado >= 10000,premio:{coins:2000}},
   {id:'gold-100k',n:'🌟 Leyenda',d:'Regalá 100.000 🪙 en total',check:(s) => s.totalRegalado >= 100000,premio:{coins:20000,cash:5}},
   {id:'gold-1m',n:'🌌 Cósmico',d:'Regalá 1.000.000 🪙 en total',check:(s) => s.totalRegalado >= 1000000,premio:{coins:200000,cash:50}},
-  {id:'cash-1',n:'💎 Primer dólar',d:'Regalá 1 💎',check:(s) => s.cashRegalado >= 1,premio:{coins:500}},
+  {id:'cash-1',n:'💎 Primer diamante',d:'Regalá 1 💎',check:(s) => s.cashRegalado >= 1,premio:{coins:500}},
   {id:'cash-10',n:'💎 Inversor',d:'Regalá 10 💎',check:(s) => s.cashRegalado >= 10,premio:{coins:5000,cash:1}},
   {id:'big-5k',n:'🔥 Gran tirador',d:'Un regalo de 5.000+ 🪙',check:(s) => s.mejorRegalo >= 5000,premio:{coins:1000}},
   {id:'multi-10',n:'🤝 Multi-apoyo',d:'Apoyá a 10 jugadores distintos',check:(s) => (s.jugadoresApoyados||[]).length >= 10,premio:{coins:1500}}
@@ -1505,6 +1510,7 @@ function H(){
     <button class=b4 onclick="music(!MU);H()">🎵 Música</button>
     <button class=b4 onclick=sv()>💾 Guardar</button>
     <button class=b4 onclick=tut()>❓ Ayuda</button>
+    <button class=b4 onclick="aboutM()">🔒 Privacidad</button>
     <button class=b4 onclick=toggleStreamer()>🔴 Streamer</button>
     <button class=b4 onclick="previsualizarSonidos()">🎵 Sonidos por nivel</button>
   </div></div>`;
@@ -1520,15 +1526,6 @@ function freeR(){
   </div>`);
 }
 function gift(){ const l = 36e5 - (Date.now() - S.free); if(l > 0) return; S.free = Date.now(); S.coins += 100; save(); M('<p>🎁 ¡+100 🪙!</p>'); }
-function ad(){
-  M('<h2>📺 Anuncio</h2><div class=card style="text-align:center;font-size:26px;padding:30px">Anuncio de ejemplo<br><span id=ac>5</span> s</div><p id=ar></p>');
-  let n = 5;
-  const iv = setInterval(() => {
-    if(!$('ac') || $('modal').style.display == 'none'){ clearInterval(iv); return; }
-    $('ac').textContent = --n;
-    if(n <= 0){ clearInterval(iv); S.coins += 150; save(); $('ar').textContent = '¡Ganaste 150 🪙!'; }
-  }, 1000);
-}
 
 /* ============================================================
    MAPA
@@ -2498,7 +2495,7 @@ function hud(){
       ? (G.pn || ['Jugador 1','Jugador 2']).map((x, i) => i == G.me ? esc(x) + ' (vos)' : esc(x))
       : [c.mode != 'friends' ? FL(S.cc) + ' ' + esc(S.name) : 'Jugador 1',
          c.mode != 'friends' ? FL(G.bcc) + ' ' + esc(BN[(c.v || 0) % 7][0]) : 'Jugador 2'];
-    const pot = c.mode == 'vs' ? '<div class="pot-coins"><span>🪙</span><b>' + V[c.v].fee * 2 + '</b></div><small>Apuesta</small>'
+    const pot = c.mode == 'vs' ? '<div class="pot-coins"><span>🪙</span><b>' + V[c.v].fee * 2 + '</b></div><small>Entrada</small>'
               : c.mode == 'nine' ? (c.lines === 'full' ? '🎯<br>Completa' : '📏<br>Corta')
               : 'Amistoso';
     const P = i => {
@@ -3483,6 +3480,7 @@ function chatInit(){
   $('vozBtn').classList.remove('on');
   $('chatDot').style.display = 'none';
   $('talk').style.display = chatHay() ? 'flex' : 'none';
+  if($('chatMod')) $('chatMod').style.display = (G && G.online) ? 'block' : 'none';
   $('chatFr').innerHTML = CH_FRASES.map((f, i) => `<button class="b5" onclick="chatSend(CH_FRASES[${i}])">${f}</button>`).join('');
   if(G) G._chatSeen = 0;
 }
@@ -3523,7 +3521,7 @@ function chatSpeak(t, bot){
 function chatSend(t){
   if(!G) return;
   const inp = $('chatIn');
-  const v = String(t || inp.value || '').trim().slice(0, 60);
+  const v = filtrar(String(t || inp.value || '').trim()).slice(0, 60);
   if(!v) return;
   inp.value = '';
   say(v);
@@ -3690,14 +3688,33 @@ function tut(){ M('<h2>Cómo jugar</h2><div class=card>1. Toca la mesa para apun
    MULTIJUGADOR ONLINE
    ============================================================ */
 let NET = null, NU = null, MPK = '8';
-const NOD = 'El multijugador solo funciona con la página publicada y con sesión iniciada.';
-async function dbq(){
-  if(NET) return NET;
-  try{ NET = window.claude && await claude.use('db'); }catch(e){}
-  return NET;
+const NOD = 'Esta función online no está disponible en esta versión del juego.';
+function fbListo(){ return !!(window.firebase && window.B8_FIREBASE_CONFIG && window.B8_FIREBASE_CONFIG.apiKey); }
+let _dbP = null;
+function dbq(){
+  if(NET) return Promise.resolve(NET);
+  if(_dbP) return _dbP;
+  _dbP = (async () => {
+    try{
+      if(window.claude){ NET = await claude.use('db'); return NET; }
+      if(!fbListo()) return null;
+      if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+      const au = firebase.auth();
+      if(!au.currentUser) await au.signInAnonymously();
+      if(au.currentUser && S.uid !== au.currentUser.uid){ S.uid = au.currentUser.uid; save(); }
+      NET = firebase.firestore();
+    }catch(e){ console.warn('online no disponible', e); }
+    return NET;
+  })();
+  _dbP.then(v => { if(!v) _dbP = null; });
+  return _dbP;
 }
 async function uid(){
-  try{ const u = await claude.use('user'); return (await u.id()) || S.uid; }catch(e){ return S.uid; }
+  try{
+    if(window.claude){ const u = await claude.use('user'); return (await u.id()) || S.uid; }
+    if(fbListo() && firebase.apps.length && firebase.auth().currentUser) return firebase.auth().currentUser.uid;
+  }catch(e){}
+  return S.uid;
 }
 function mpMsg(h){ const e = $('mst'); if(e) e.innerHTML = h; }
 function mpMenu(){
@@ -3726,7 +3743,8 @@ async function mpCreate(){
       specOpen:true
     });
   }catch(e){ return mpMsg('No se pudo crear la sala'); }
-  mpMsg(`Código: <b style="font-size:32px;letter-spacing:4px">${c}</b><br>Esperando rival…`);
+  mpMsg(`Código: <b style="font-size:32px;letter-spacing:4px">${c}</b><br>Esperando rival…
+    <div style="display:flex;gap:6px;margin-top:8px"><button class=b1 style="flex:2" onclick="compartirSala('${c}')">💬 Compartir por WhatsApp</button><button class=b3 style="flex:1" onclick="copiarSala('${c}')">📋 Copiar</button></div>`);
   if(UN) UN();
   const un = r.onSnapshot(sn => {
     const d = sn.data();
@@ -3738,6 +3756,10 @@ async function mpCreate(){
   });
   UN = () => { un(); r.delete().catch(() => {}); };
 }
+
+function textoSala(c){ return '🎱 ¡Jugá conmigo al Billar 8! Entrá a mi sala con el código ' + c + ' (Multijugador → Unirme).' + (window.B8_INVITE_URL ? ' Descargá el juego: ' + window.B8_INVITE_URL : ''); }
+function compartirSala(c){ window.open('https://wa.me/?text=' + encodeURIComponent(textoSala(c)), '_blank'); }
+async function copiarSala(c){ try{ await navigator.clipboard.writeText(textoSala(c)); notif('Mensaje copiado 📋', 'green'); }catch(e){ notif('No se pudo copiar', 'red'); } }
 async function mpJoin(c){
   const db = await dbq();
   if(!db) return mpMsg(NOD);
@@ -3762,7 +3784,7 @@ async function mpQuick(){
     const q = await db.collection('rooms').where('st0', '==', 'wait').limit(10).get();
     const d = q.docs.find(x => {
       const v = x.data();
-      return v.h && v.h.u != S.uid && (v.k || '8') == MPK && Date.now() - v.t < 6e5;
+      return v.h && v.h.u != S.uid && !esBloqueado(v.h.u) && (v.k || '8') == MPK && Date.now() - v.t < 6e5;
     });
     if(d) return mpJoin(d.id);
   }catch(e){}
@@ -3779,6 +3801,8 @@ function mpStart(db, c, me, d){
   G.code = c;
   G.ref = db.doc('rooms/' + c);
   G.pn = [FL(d.h.c) + ' ' + esc(d.h.n), FL(d.g.c) + ' ' + esc(d.g.n)];
+  G.rivalUid = me == 0 ? (d.g && d.g.u) : (d.h && d.h.u);
+  G.rivalName = me == 0 ? (d.g && d.g.n) : (d.h && d.h.n);
   G.balls = JSON.parse(d.b0).map(([n, x, y]) => ({ n, x, y, vx:0, vy:0, a:1 }));
   hud();
   NU = G.ref.onSnapshot(sn => netIn(sn.data()));
@@ -3858,7 +3882,8 @@ function netIn(d){
     G.pend = d.st;
     if(!G.moving) netApply();
   }
-  const m = d.msg;
+  const m0 = d.msg;
+  const m = (m0 && m0.by != G.me && esBloqueado(G.rivalUid)) ? null : (m0 ? Object.assign({}, m0, { m:filtrar(String(m0.m || '').slice(0, 60)) }) : m0);
   if(m && m.by != G.me && m.id != G.lm){
     G.lm = m.id;
     const t = (G.pn[m.by] || 'Rival') + ': ' + esc(m.m);
@@ -3998,7 +4023,7 @@ async function specWatch(cod){
     });
     [...s2.docs].reverse().forEach(x => {
       const m = x.data();
-      const txt = m.tipo === 'regalo' ? `🎁 ${esc(m.n)} regaló ${m.coins} ${m.moneda === 'cash' ? '💎' : '🪙'} a ${esc(m.to)}` : `${esc(m.n)}: ${esc(m.m)}`;
+      const txt = m.tipo === 'regalo' ? `🎁 ${esc(m.n)} regaló ${m.coins} ${m.moneda === 'cash' ? '💎' : '🪙'} a ${esc(m.to)}` : `${esc(filtrar(m.n))}: ${esc(filtrar(m.m))}`;
       G.chat.push(txt);
     });
     hud();
@@ -4490,10 +4515,14 @@ function reaccionPorMonto(equiv){
   return REACCIONES.chico;
 }
 function filtrar(t){
-  const malas = ['puta','puto','mierda','cag','concha','verga','pija','chupa','pendejo'];
-  let x = t;
-  malas.forEach(w => x = x.replace(new RegExp(w, 'gi'), '***'));
-  return x;
+  t = String(t == null ? '' : t);
+  const MALAS = ['puta','puto','mierda','cag','concha','verga','pija','chupa','pendej','boludo','carajo','hdp','forro','nazi','violar','suicid','maricon','sorete','tarado'];
+  const MAP = {'á':'a','à':'a','ä':'a','é':'e','è':'e','ë':'e','í':'i','ì':'i','ï':'i','ó':'o','ò':'o','ö':'o','ú':'u','ù':'u','ü':'u','4':'a','3':'e','1':'i','0':'o','@':'a','$':'s','ñ':'n'};
+  let norm = ''; for(const ch of t.toLowerCase()) norm += (MAP[ch] || ch);
+  const marcas = new Array(t.length).fill(false);
+  MALAS.forEach(w => { let i = norm.indexOf(w); while(i >= 0){ for(let k = i; k < i + w.length; k++) marcas[k] = true; i = norm.indexOf(w, i + 1); } });
+  let out = ''; for(let i = 0; i < t.length; i++) out += marcas[i] ? '*' : t[i];
+  return out.replace(/(https?:\/\/|www\.)\S+/gi, '***');
 }
 function toggleBot(){ S.botOn = S.botOn === false; save(); notif(S.botOn !== false ? '🤖 Bot activado' : '🤖 Bot desactivado', ''); }
 let ULTIMO_SALUDO = 0;
@@ -5254,7 +5283,7 @@ async function clanM(){
 }
 async function clanCreate(){
   if(S.coins < 500) return notif('Necesitás 500 🪙', 'red');
-  const n = $('cln').value.trim();
+  const n = filtrar($('cln').value.trim());
   if(n.length < 2) return;
   const db = await dbq(), me = await uid();
   const c = Array.from({ length:5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random() * 32 | 0]).join('');
@@ -5761,7 +5790,7 @@ function misSubs(){
 /* ============================================================
    COMPARTIR / NUBE
    ============================================================ */
-function gameLink(cod){ const base = location.origin + location.pathname; return cod ? base + '?sala=' + cod : base; }
+function gameLink(cod){ const base = window.B8_INVITE_URL || (/^https?:$/.test(location.protocol) && location.hostname !== 'localhost' ? location.origin + location.pathname : ''); if(!base) return cod ? 'Código de sala: ' + cod : ''; return cod ? base + (base.indexOf('?') >= 0 ? '&' : '?') + 'sala=' + cod : base; }
 function shareText(t){ return encodeURIComponent(t); }
 function shareWA(txt){ window.open('https://wa.me/?text=' + shareText(txt), '_blank'); }
 function shareTG(txt){ window.open('https://t.me/share/url?url=' + shareText(gameLink()) + '&text=' + shareText(txt), '_blank'); }
@@ -5781,23 +5810,21 @@ function shareMenu(){
 }
 function inviteTrack(){ S.share = S.share || 0; S.share++; save(); notif('¡Gracias por compartir! 🙌', 'green'); }
 async function cloudRef(){
-  const db = await dbq();
-  let u = null;
-  try{ u = await claude.use('user'); }catch(e){}
-  if(!db || !u) return null;
-  return db.doc('data/users/' + await u.id() + '/save');
+  const db = await dbq(), id = await uid();
+  if(!db || !id) return null;
+  return db.doc('data/users/' + id + '/save');
 }
 async function cloud(op){
   try{
     const r = await cloudRef();
     if(!r) return M('<p>' + NOD + '</p>');
-    if(op == 'up'){ S.cl = 1; save(); await r.set({ j:JSON.stringify(S), t:Date.now() }); M('<h2>☁️ Guardado</h2>'); }
+    if(op == 'up'){ S.cl = 1; save(); await r.set({ j:cloudJSON(), t:Date.now() }); M('<h2>☁️ Guardado</h2>'); }
     else { const sn = await r.get(); if(!sn.exists) return M('<p>Todavía no hay guardado.</p>'); const o = JSON.parse(sn.data().j); if(o.ck !== sig(o, o.v == 3 ? KS : KS0)) return M('<p>Guardado no válido.</p>'); Object.assign(S, o); S.v = 3; save(); M('<h2>☁️ Cargado</h2>'); }
   }catch(e){ M('<p>No se pudo usar la nube.</p>'); }
 }
 async function cloudAuto(){
   if(!S.cl) return;
-  try{ const r = await cloudRef(); if(r) await r.set({ j:JSON.stringify(S), t:Date.now() }); }catch(e){}
+  try{ const r = await cloudRef(); if(r) await r.set({ j:cloudJSON(), t:Date.now() }); }catch(e){}
 }
 function sv(){
   save();
@@ -6095,7 +6122,7 @@ async function rankM(){
   }catch(e){ if($('rk')) $('rk').textContent = 'Error'; }
 }
 function ren(){ M(`<h2>Cambiar nombre</h2><input id=rn maxlength=14 value="${S.name.replace(/"/g, '')}" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box;font-size:18px"><p><button class=b1 style="width:100%" onclick="rn2()">Guardar</button></p>`); }
-function rn2(){ const n = $('rn').value.trim(); if(n.length < 2) return; S.name = n.slice(0, 14); save(); prof(); }
+function rn2(){ const n = filtrar($('rn').value.trim()); if(n.length < 2) return; S.name = n.slice(0, 14); save(); prof(); }
 function delImg(){ S.img = ''; save(); prof(); }
 function pbar(v, m, ic, c){ return `<div class=pb><div style="width:${Math.min(100, v / m * 100)}%;background:${c}"></div><span>${v}/${m}</span><b>${ic}</b></div>`; }
 function prof(){
@@ -6136,6 +6163,90 @@ function prof(){
     </div>`;
   $('modal').style.display = 'block';
 }
+
+/* ============================================================
+   PRIVACIDAD / ACERCA DE (requisito Google Play)
+   ============================================================ */
+const PRIVACY_URL = 'https://TU-USUARIO.github.io/billar8/privacy-policy.html'; // <- reemplazar por tu URL pública
+function aboutM(){
+  M(`<h2>🔒 Privacidad y acerca de</h2>
+    <div class=card style="font-size:13px;line-height:1.45">
+      <b>Billar 8 · San Pedro del Ycuamandiyú</b><br>
+      Juego de billar para entretenimiento. Las monedas 🪙 y los diamantes 💎 son <b>virtuales</b>, no tienen valor real, no se compran con dinero ni se pueden canjear. No hay juegos de azar con dinero real.
+    </div>
+    <div class=card style="font-size:13px;line-height:1.45">
+      Tu progreso y tu foto de perfil se guardan <b>en tu dispositivo</b>. Si jugás online, tu nombre, país, resultados y mensajes de partida se guardan en nuestros servidores (Google Firebase) con un identificador anónimo. Sin anuncios, sin analíticas, sin cuenta ni correo.
+    </div>
+    <button class=b1 style="width:100%;margin-bottom:6px" onclick="window.open(PRIVACY_URL,'_blank')">📄 Política de privacidad</button>
+    <button class=b6 style="width:100%" onclick="borrarDatos()">🗑️ Borrar todos mis datos</button>`);
+}
+async function borrarDatos(){
+  if(!confirm('Se borrará todo tu progreso, monedas, tacos y foto de este dispositivo y, si jugaste online, tus datos de ranking y perfil online. ¿Continuar?')) return;
+  try{
+    if(fbListo() && firebase.apps.length){
+      const db = await dbq(), id = await uid();
+      if(db && id){
+        const rutas = ['elo/' + id, 'spectator_rank/' + id, 'spectator_stats/' + id, 'taco_masters/' + id, 'fr/' + id, 'data/users/' + id + '/save', 'data/users/' + id + '/subs'];
+        for(const r of rutas){ try{ await db.doc(r).delete(); }catch(e){} }
+        try{ await firebase.auth().currentUser.delete(); }catch(e){}
+      }
+    }
+  }catch(e){}
+  try{ localStorage.clear(); }catch(e){}
+  location.reload();
+}
+
+/* ============================================================
+   MODERACIÓN DE CONTENIDO DE USUARIOS (requisito Google Play)
+   ============================================================ */
+function cloudJSON(){ const o = Object.assign({}, S); delete o.img; return JSON.stringify(o); }
+function esBloqueado(u){ return !!(u && S.bloq && S.bloq[u]); }
+function modRival(){
+  if(!G || !G.online || !G.rivalUid) return;
+  const nm = esc(G.rivalName || 'Rival');
+  M(`<h2>🚩 ${nm}</h2>
+    <p style="font-size:13px">Reportá conductas ofensivas, spam o trampas. Podés bloquear al rival para no ver sus mensajes ni volver a emparejarte con él.</p>
+    <div class=g>
+      <button class=b6 onclick="reportarRival('ofensivo')">Lenguaje ofensivo</button>
+      <button class=b6 onclick="reportarRival('acoso')">Acoso</button>
+      <button class=b6 onclick="reportarRival('spam')">Spam / enlaces</button>
+      <button class=b6 onclick="reportarRival('trampa')">Trampa</button>
+    </div>
+    <button class=b5 style="width:100%;margin-top:8px" onclick="bloquearRival()">🚫 Bloquear a ${nm}</button>`);
+}
+async function reportarRival(motivo){
+  try{
+    const db = await dbq(), me = await uid();
+    if(db && G && G.rivalUid){
+      await db.collection('reports').add({ by:me, target:String(G.rivalUid), name:String(G.rivalName || '').slice(0, 30), room:String(G.code || ''), motivo:String(motivo).slice(0, 20), t:Date.now() });
+    }
+    X(); notif('Reporte enviado. ¡Gracias!', 'green');
+  }catch(e){ X(); notif('No se pudo enviar el reporte', 'red'); }
+}
+function bloquearRival(){
+  if(!G || !G.rivalUid) return;
+  S.bloq = S.bloq || {}; S.bloq[G.rivalUid] = String(G.rivalName || '').slice(0, 30); save();
+  X(); notif('Jugador bloqueado', 'green');
+}
+function tosM(cont){
+  M(`<h2>🤝 Reglas de convivencia</h2>
+    <div class=card style="font-size:13px;line-height:1.5">
+      Para jugar online aceptás estas reglas:<br>
+      • Respeto: sin insultos, acoso, discriminación ni contenido sexual o violento.<br>
+      • Sin spam, enlaces, datos personales ni trampas.<br>
+      • Los mensajes se filtran y pueden ser reportados. Los reportes se revisan y las cuentas infractoras pueden ser suspendidas.<br>
+      • Tu nombre, país, resultados y mensajes de partida se guardan en nuestros servidores (ver Privacidad). Es necesario tener 13 años o más.
+    </div>
+    <button class=b1 style="width:100%;margin-bottom:6px" id=tosOk>Acepto</button>
+    <button class=b5 style="width:100%" onclick="X()">Cancelar</button>`);
+  const b = $('tosOk'); if(b) b.onclick = () => { S.tos = 1; save(); X(); try{ cont && cont(); }catch(e){ console.warn(e); } };
+}
+(function(){
+  ['mpMenu','mpQuick','mpCreate','mpJoin','specM','specWatch','clanM','rankM','eloRanking'].forEach(function(n){
+    var f = window[n]; if(typeof f !== 'function') return;
+    window[n] = function(){ var a = arguments, self = this; if(!S.tos && fbListo()) return tosM(function(){ return f.apply(self, a); }); return f.apply(self, a); };
+  });
+})();
 function logout(){ S.login = null; save(); location.reload(); }
 
 /* ============================================================
@@ -6159,13 +6270,13 @@ function loginSoc(p){ const n = ($('lgn').value || '').trim(); if(n.length < 2) 
 async function loginAcc(){
   let id = null;
   try{ const u = await claude.use('user'); id = u && await u.id(); }catch(e){}
-  if(!id) return M('<h2>Iniciar sesión</h2><p>Necesita la página publicada en claude.ai.</p>');
+  if(!id) return M('<h2>Iniciar sesión</h2><p>El inicio de sesión online no está disponible en esta versión. Podés jugar como invitado.</p>');
   try{
     const db = await dbq(), r = db.doc('data/users/' + id + '/save'), sn = await r.get();
     let msg = 'Sesión iniciada.';
     if(sn.exists){ const o = JSON.parse(sn.data().j); if(o.ck === sig(o, o.v == 3 ? KS : KS0) && (o.played || 0) > S.played){ Object.assign(S, o); S.v = 3; msg = 'Progreso recuperado ☁️'; } }
     S.login = 'account'; S.cl = 1; save();
-    await r.set({ j:JSON.stringify(S), t:Date.now() });
+    await r.set({ j:cloudJSON(), t:Date.now() });
     M('<h2>✅ ' + msg + '</h2>');
     hideLogin();
   }catch(e){ M('<p>Error.</p>'); }
@@ -6605,11 +6716,6 @@ function couchStart(){
   M(`<h2>🎮 Couch Co-op</h2><div class=card>2 jugadores en la misma pantalla. Se turnan.</div>
     <button class=b1 style="width:100%;padding:14px" onclick="X();startGame({mode:'friends'})">Empezar</button>`);
 }
-function adCenter(){
-  M(`<h2>📺 Anuncios gratis</h2>
-    <div class=card>🎁 Ver anuncio → +150 🪙<br><button class=b1 style="width:100%;margin-top:6px" onclick="X();ad()">Ver ahora</button></div>
-    <div class=card>🔥 Boost x2 por 1 partida → ver 2 anuncios<br><button class=b2 style="width:100%;margin-top:6px" onclick="activarBoost()">Activar boost (gratis)</button></div>`);
-}
 function activarBoost(){ S.boost = 1; save(); notif('🔥 Boost activado: próxima victoria +500 🪙', 'green'); X(); }
 function frM(){
   M(`<h2>👫 Amigos</h2>
@@ -6792,6 +6898,23 @@ function floatTxt(txt, color){
 try{ fit(); }catch(e){ console.error('fit',e); }
 try{ loop(); }catch(e){ console.error('loop',e); }
 try{ if(S && !S.login){ S.login='guest'; save(); } H(); }catch(e){ console.error('boot',e); }
+</script>
+<script>
+/* Funciones online: visibles solo con backend (Firebase configurado). Inicio de sesión/nube manual siempre oculto fuera de Claude. */
+(function(){
+  var back = !!window.claude || !!(window.firebase && window.B8_FIREBASE_CONFIG && window.B8_FIREBASE_CONFIG.apiKey);
+  var ON = ['abrirSuizoPanel', 'abrirTorneoPanel', 'clanM', 'clanCreate', 'clanJoin', 'clanRank', 'eloRanking', 'frPub', 'maestrosTacosGlobal', 'mpMenu', 'mpCreate', 'mpJoin', 'mpQuick', 'rankM', 'specM', 'specRanking', 'specRankSemanal', 'specHistory', 'specWatch', 'crearTorneoEspectable', 'crearTorneoSuizo', 'verReplayEspectable', 'statsEspectador', 'logrosEspectador', 'suscribirseA', 'cargarSuscripciones'];
+  var SIEMPRE = ['loginAcc','cloud'];
+  var NUCLEO = ['mpMenu','mpCreate','mpJoin','mpQuick','eloRanking','rankM'];
+  var EXTRAS = ON.filter(function(n){ return NUCLEO.indexOf(n) < 0; });
+  var soloPartidas = !window.claude && window.B8_ONLY_MATCHES !== false; /* 1ª versión online: solo partidas 1 vs 1 + ranking ELO */
+  var lista = !back ? ON.concat(SIEMPRE) : (window.claude ? [] : SIEMPRE.concat(soloPartidas ? EXTRAS : []));
+  if(!lista.length) return;
+  var RX = new RegExp('\\b(' + lista.join('|') + ')\\s*\\(');
+  function sweep(){ try{ document.querySelectorAll('[onclick]').forEach(function(e){ if(RX.test(e.getAttribute('onclick')||'')) e.style.display='none'; }); }catch(e){} }
+  try{ new MutationObserver(sweep).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  sweep();
+})();
 </script>
 </body>
 </html>

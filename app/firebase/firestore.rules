@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function notBanned() {
+      return signedIn() && !exists(/databases/$(database)/documents/banned/$(request.auth.uid));
+    }
+    function owner(id) { return notBanned() && request.auth.uid == id; }
+    function optStr(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
+    function isPlayer(room) {
+      let r = get(/databases/$(database)/documents/rooms/$(room)).data;
+      return r.h.u == request.auth.uid || (('g' in r) && r.g.u == request.auth.uid);
+    }
+
+    // Lista de baneados: solo se edita desde la consola de Firebase (que ignora las reglas).
+    match /banned/{id} { allow read, write: if false; }
+
+    // Reportes de jugadores: solo se crean; se leen desde la consola.
+    match /reports/{id} {
+      allow create: if notBanned()
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t'])
+        && optStr(request.resource.data, 'motivo', 20)
+        && optStr(request.resource.data, 'name', 30);
+      allow read, update, delete: if false;
+    }
+
+    // Salas de partida
+    match /rooms/{room} {
+      allow read: if notBanned();
+      allow create: if notBanned() && request.resource.data.h.u == request.auth.uid;
+      allow update: if notBanned() && (
+        // anfitrión o invitado ya dentro de la sala
+        resource.data.h.u == request.auth.uid
+        || (('g' in resource.data) && resource.data.g.u == request.auth.uid)
+        // unirse a una sala libre
+        || (!('g' in resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g','st0'])
+            && request.resource.data.g.u == request.auth.uid)
+      );
+      allow delete: if notBanned() && resource.data.h.u == request.auth.uid;
+
+      match /chat/{id} {
+        allow read: if notBanned();
+        allow create: if notBanned() && optStr(request.resource.data, 'm', 100) && optStr(request.resource.data, 'n', 30);
+        allow update, delete: if false;
+      }
+      match /gifts/{id} {
+        allow read: if notBanned();
+        allow create: if notBanned();
+        allow update, delete: if false;
+      }
+      match /spectators/{id} { allow read, write: if notBanned(); }
+      match /replay/{id} {
+        allow read: if notBanned();
+        allow write: if notBanned() && isPlayer(room);
+      }
+    }
+    // Consulta global de regalos (collectionGroup)
+    match /{path=**}/gifts/{id} { allow read: if notBanned(); }
+
+    // Datos por jugador: lectura para jugadores autenticados (rankings), escritura solo del dueño
+    match /elo/{id}              { allow read: if notBanned(); allow write: if owner(id); }
+    match /spectator_rank/{id}   { allow read: if notBanned(); allow write: if owner(id); }
+    match /spectator_stats/{id}  { allow read: if notBanned(); allow write: if owner(id); }
+    match /spectator_weekly/{w}/top/{id} { allow read: if notBanned(); allow write: if owner(id); }
+    match /taco_masters/{id}     { allow read: if notBanned(); allow write: if owner(id); }
+    match /fr/{id}               { allow read: if notBanned(); allow write: if owner(id); }
+    match /data/users/{id}/{doc=**} { allow read, write: if owner(id); }
+
+    match /notificaciones/{id}/cola/{n} {
+      allow create: if notBanned();
+      allow read, delete: if owner(id);
+      allow update: if false;
+    }
+
+    // Clanes y torneos (reglas amplias: ver README, sección "Límites")
+    match /clanes/{c} {
+      allow read: if notBanned();
+      allow create: if notBanned() && optStr(request.resource.data, 'n', 24);
+      allow update: if notBanned();
+      allow delete: if false;
+    }
+    match /torneos_suizos/{t}      { allow read, create, update: if notBanned(); }
+    match /torneos_espectables/{t} { allow read, create, update: if notBanned(); }
+
+    // Todo lo demás: denegado
+    match /{document=**} { allow read, write: if false; }
+  }
+}
