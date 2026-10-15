@@ -1,0 +1,51 @@
+
+name: Crear APK Billar 8
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Crear proyecto Android
+        run: |
+          mkdir build-app
+          cd build-app
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          mkdir www
+          cp -r ../app/www/. www/
+          npx cap init "Billar 8 Pool 3D" "com.juansaucedo.billar8" --web-dir www
+          npx cap add android
+          npx cap sync android
+
+      - name: Compilar APK
+        run: |
+          cd build-app/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Billar8-APK
+          path: build-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
