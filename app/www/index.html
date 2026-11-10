@@ -7325,7 +7325,7 @@ async function trAbrir(id){
     if(d.creatorUid===x.me&&d.status==='registration'&&(d.uids||[]).length>=2)html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trIniciar(\''+id+'\')">▶ Iniciar torneo y sortear cruces</button>';
     html+='<h3>Participantes</h3>';
     (d.players||[]).forEach(function(p){html+='<div class="card">🎱 '+trEsc(p.name)+'</div>';});
-    if(d.creatorUid===x.me&&matches.size&&matches.docs.every(function(q){return q.data().status==='confirmed';}))html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trSiguienteRonda(\''+id+'\')">🏁 Confirmar y avanzar de ronda</button>';
+    if(d.creatorUid===x.me&&d.status==='active'&&matches.size&&matches.docs.every(function(q){return q.data().status==='confirmed';}))html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trSiguienteRonda(\''+id+'\')">🏁 Confirmar y avanzar de ronda</button>';
     html+='<button class="b5" style="width:100%;margin-bottom:8px" onclick="trAbrir(\''+id+'\')">🔄 Actualizar torneo</button><button class="b3" style="width:100%;margin-bottom:8px" onclick="trTabla(\''+id+'\')">📊 Tabla de resultados</button>';
     html+='<h3>Partidas</h3>';
     matches.forEach(function(doc){var m=doc.data();html+='<div class="card"><b>'+trEsc(m.aName)+' vs '+trEsc(m.bName||'Libre')+'</b><br>Estado: '+trEsc(m.status)+(m.winnerUid?' · Ganador confirmado':'');
