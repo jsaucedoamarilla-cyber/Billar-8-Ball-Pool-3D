@@ -33,9 +33,11 @@ nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}nav button{background:#263
 <div class="card"><div class="muted">Salas activas / esperando</div><div id="nRooms" class="stat">—</div></div>
 <div class="card"><div class="muted">Cuentas sancionadas</div><div id="nBanned" class="stat">—</div></div>
 </div>
-<nav><button data-tab="players" class="active">Jugadores</button><button data-tab="reports">Reportes</button><button data-tab="rooms">Partidas y salas</button><button data-tab="banned">Bloqueos</button></nav>
+<nav><button data-tab="overview" class="active">Resumen</button><button data-tab="players">Jugadores</button><button data-tab="economy">Monedas y diamantes</button><button data-tab="reports">Reportes</button><button data-tab="rooms">Partidas y salas</button><button data-tab="banned">Bloqueos</button></nav>
 <div id="msg"></div>
-<section id="players" class="card"><div class="row"><h2>👥 Jugadores</h2><button id="refresh">Actualizar</button></div><input id="playerFilter" placeholder="Buscar por nombre o UID"><div id="playerList" class="muted">Cargando…</div></section>
+<section id="overview" class="card"><h2>📊 Resumen general</h2><div class="grid"><div><div class="muted">Partidas registradas en perfiles</div><div id="nPlayed" class="stat">—</div></div><div><div class="muted">Victorias registradas</div><div id="nWon" class="stat">—</div></div><div><div class="muted">Monedas en perfiles</div><div id="sumCoins" class="stat">—</div></div><div><div class="muted">Diamantes en perfiles</div><div id="sumCash" class="stat">—</div></div></div><p class="muted">Estas cifras se calculan únicamente con las cuentas que aparecen en el índice privado y que sincronizaron su progreso. No representan jugadores invitados ni saldos en tiempo real.</p><h3>Actividad reciente de cuentas</h3><div id="recentPlayers"></div><h3>Estado de salas</h3><div id="roomSummary" class="muted"></div></section>
+<section id="economy" class="card hidden"><h2>🪙 Monedas y diamantes</h2><p class="muted">Vista de solo lectura. No se modifican saldos desde este panel para evitar pérdidas o alteraciones: el juego todavía guarda estas cantidades desde el dispositivo del jugador. Para habilitar ajustes seguros hará falta un servicio del servidor con registro de cada movimiento.</p><div id="economyList"></div></section>
+<section id="players" class="card hidden"><div class="row"><h2>👥 Jugadores</h2><button id="refresh">Actualizar</button></div><input id="playerFilter" placeholder="Buscar por nombre o UID"><div id="playerList" class="muted">Cargando…</div></section>
 <section id="reports" class="card hidden"><h2>🚩 Reportes recibidos</h2><p class="muted">Un reporte es una denuncia, no una prueba automática. Revisá la información antes de sancionar.</p><div id="reportList">Cargando…</div></section>
 <section id="rooms" class="card hidden"><h2>🎱 Partidas y salas</h2><div id="roomList">Cargando…</div></section>
 <section id="banned" class="card hidden"><h2>⛔ Cuentas bloqueadas</h2><div id="bannedList">Cargando…</div></section>
@@ -75,7 +77,7 @@ async function start(){
 $('google').onclick=async()=>{const b=$('google');try{b.disabled=true;b.textContent='Conectando con Google…';$('loginMsg').textContent='Abriendo el acceso seguro de Google…';const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});try{await firebase.auth().signInWithPopup(p);}catch(e){if(e.code==='auth/popup-blocked'||e.code==='auth/popup-closed-by-user'||e.code==='auth/operation-not-supported-in-this-environment'){ $('loginMsg').textContent='Abriendo Google en otra pantalla…';await firebase.auth().signInWithRedirect(p);return;}throw e;}}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión. Código: '+(e.code||'sin código')+'. Detalle: '+e.message+'. Abrí el enlace directamente en Chrome.';b.disabled=false;b.textContent='Continuar con Google';}};
 $('logout').onclick=()=>firebase.auth().signOut();
 $('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>msg('UID copiado'));else{$('uid').select();document.execCommand('copy');msg('UID copiado');}};
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['players','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['overview','players','economy','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
 $('refresh').onclick=loadAll;
 $('playerFilter').oninput=renderPlayers;
 document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b)return;const uid=b.dataset.uid||'',name=b.dataset.name||'Jugador';if(b.dataset.action==='sanction')sanction(uid,name);if(b.dataset.action==='unban')unban(uid);if(b.dataset.action==='review')markReportReviewed(b.dataset.reportId||'');});
@@ -93,8 +95,21 @@ async function loadAll(){
   rooms=ms.docs.map(d=>({id:d.id,...d.data()})).filter(x=>['wait','play'].includes(x.st0));
   banned=bs.docs.map(d=>({uid:d.id,...d.data()}));
   $('nPlayers').textContent=players.length;$('nReports').textContent=reports.filter(r=>!r.reviewedAt).length;$('nRooms').textContent=rooms.length;$('nBanned').textContent=banned.length;
-  renderPlayers();renderReports();renderRooms();renderBanned();msg('Información actualizada: '+when(Date.now()));
+  renderPlayers();renderReports();renderRooms();renderBanned();renderOverview();renderEconomy();msg('Información actualizada: '+when(Date.now()));
  }catch(e){msg('Error al cargar datos: '+e.message+'. Verificá las reglas de Firestore y que este UID esté autorizado.');}
+}
+function renderOverview(){
+ const total=(key)=>players.reduce((a,p)=>a+Math.max(0,Number(p[key])||0),0);
+ $('nPlayed').textContent=money(total('played'));$('nWon').textContent=money(total('won'));
+ $('sumCoins').textContent=money(total('coins'));$('sumCash').textContent=money(total('cash'));
+ const recent=[...players].sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0)).slice(0,8);
+ $('recentPlayers').innerHTML=recent.length?recent.map(p=>'<div class="item"><b>'+esc(p.name||'Jugador')+'</b><div class="muted">'+esc(p.accountEmail||'Cuenta vinculada')+' · Última sincronización: '+when(p.updatedAt)+'</div></div>').join(''):'<div class="empty">Aún no hay cuentas sincronizadas.</div>';
+ const waiting=rooms.filter(r=>r.st0==='wait').length,playing=rooms.filter(r=>r.st0==='play').length;
+ $('roomSummary').textContent='Esperando rival: '+waiting+' · En partida: '+playing+' · Salas consultadas: '+rooms.length;
+}
+function renderEconomy(){
+ const sorted=[...players].sort((a,b)=>(Number(b.coins)||0)+(Number(b.cash)||0)*10000-((Number(a.coins)||0)+(Number(a.cash)||0)*10000));
+ $('economyList').innerHTML=sorted.length?sorted.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">Solo lectura</span></div><div class="muted">UID: '+esc(p.uid)+'<br>🪙 Monedas: '+money(p.coins)+' · 💎 Diamantes: '+money(p.cash)+'<br>Actualizado: '+when(p.updatedAt)+'</div></div>').join(''):'<div class="empty">No hay saldos sincronizados para mostrar.</div>';
 }
 function renderPlayers(){
  const q=$('playerFilter').value.trim().toLowerCase();
