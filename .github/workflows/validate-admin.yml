@@ -45,3 +45,16 @@ jobs:
           grep -q "admin_player_index" app/www/admin.html
           grep -q "match /admin_player_index/{id}" firestore-admin-addon.rules
           echo "Índice privado y reglas presentes en BILLAR 8 PRO"
+
+      - name: Preparar Java para Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Compilar reglas candidatas sin desplegarlas
+        working-directory: app/firebase
+        run: |
+          cp ../../firestore-admin-addon.rules firestore.preview.rules
+          printf '{"firestore":{"rules":"firestore.preview.rules"}}' > firebase.preview.json
+          npx --yes firebase-tools@latest emulators:exec --only firestore --project demo-billar8-rules --config firebase.preview.json "echo Reglas Firestore compiladas"
