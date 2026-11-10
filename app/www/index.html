@@ -7383,6 +7383,30 @@ try{
   if(fbListo()){
     if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
     firebase.auth().onAuthStateChanged(async function(user){
+      if(window.B8_MOD_INBOX_UNSUB){ try{window.B8_MOD_INBOX_UNSUB();}catch(e){} window.B8_MOD_INBOX_UNSUB=null; }
+      if(user){
+        try{
+          const modDb=firebase.firestore();
+          modDb.doc('banned/'+user.uid).get().then(function(ban){
+            if(ban.exists){
+              S.moderationBlocked=1;
+              notif('⛔ Tu cuenta está bloqueada para las funciones online. Contactá al soporte para solicitar una revisión.','red');
+              pushLocal('BILLAR 8 PRO · Cuenta bloqueada','Tu cuenta está bloqueada para las funciones online.');
+            }
+          }).catch(function(){});
+          window.B8_MOD_INBOX_UNSUB=modDb.collection('notificaciones/'+user.uid+'/cola').orderBy('t','desc').limit(10).onSnapshot(function(snap){
+            snap.docChanges().forEach(function(change){
+              if(change.type!=='added') return;
+              const item=change.doc.data()||{};
+              if(item.tipo==='moderacion'){
+                notif(item.cuerpo||item.titulo||'Aviso de moderación','red');
+                pushLocal(item.titulo||'Aviso de BILLAR 8 PRO',item.cuerpo||'Tenés una notificación.');
+                change.doc.ref.delete().catch(function(){});
+              }
+            });
+          },function(){});
+        }catch(e){}
+      }
       if(!user || user.isAnonymous) return;
       try{
         const db=firebase.firestore(), ref=db.doc('data/users/'+user.uid+'/save'), snap=await ref.get();
