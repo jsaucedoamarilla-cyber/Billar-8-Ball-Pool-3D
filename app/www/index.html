@@ -4227,7 +4227,7 @@ async function specSendChat(){
   X(); notif('💬 Enviado', 'green');
 }
 function specGift(who){
-  M(`<h2>🎁 Regalar a ${esc(G.pn[who])}</h2><p style="font-size:13px;color:#8a90a8">Elegí cuánto regalar. Sale de tu saldo.</p>
+  M(`<h2>🎁 Regalar a ${esc(G.pn[who])}</h2><p style="font-size:13px;color:#8a90a8">Elegí cuánto regalar de tu saldo virtual. No se cobra dinero real.</p><p>Tu saldo: <b>${S.coins||0} 🪙</b> · <b>${S.cash||0} 💎</b></p>
     <div class=reward-grid>
       <div class=reward-card><b>100 🪙</b><button class=b1 onclick="specSendGift(${who},100,'coins')">Enviar</button></div>
       <div class=reward-card><b>500 🪙</b><button class=b1 onclick="specSendGift(${who},500,'coins')">Enviar</button></div>
@@ -4238,7 +4238,7 @@ function specGift(who){
 async function specSendGift(who, cant, tipo){
   if(!G || !G.ref) return;
   if(tipo === 'coins' && S.coins < cant) return notif('No te alcanzan las monedas', 'red');
-  if(tipo === 'cash' && S.cash < cant) return notif('No te alcanza la plata', 'red');
+  if(tipo === 'cash' && S.cash < cant) return notif('No te alcanzan los diamantes', 'red');
   if(tipo === 'coins') S.coins -= cant; else S.cash -= cant;
   save();
   try{
@@ -4254,7 +4254,7 @@ async function specSendGift(who, cant, tipo){
   else { snd('giftMega', 1); celebrate(S.name); }
   if(typeof lanzarReaccion === 'function') lanzarReaccion(equiv, S.name);
   X();
-  notif(`🎁 Regalaste ${cant} ${tipo === 'coins' ? '🪙' : '💎'} a ${G.pn[who]}`, 'green');
+  notif(`🎁 Regalaste ${cant} ${tipo === 'coins' ? '🪙' : '💎'} virtuales a ${G.pn[who]}`, 'green');
   try{
     const db = await dbq();
     const me = await uid();
