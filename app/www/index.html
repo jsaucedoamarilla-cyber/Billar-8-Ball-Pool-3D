@@ -6373,7 +6373,7 @@ function prof(){
         <div class=bx>${(S.ach || []).length}/${ACH.length} 🏅</div>
         <div class=sec>☁️ Cuenta y respaldo</div>
         <div class=bx>
-          <div style="font-size:13px;margin-bottom:8px">${S.cl && firebase.auth && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous ? '🔒 Cuenta protegida · progreso sincronizado' : '🧑 Invitado · progreso guardado en este dispositivo'}</div>
+          <div style="font-size:13px;margin-bottom:8px">${S.cl && window.firebase && firebase.apps.length && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous ? '🔒 Cuenta protegida · progreso sincronizado' : '🧑 Invitado · progreso guardado en este dispositivo'}</div>
           <button class=b1 style="width:100%" onclick="cuentaM()">${S.cl ? '⚙️ Administrar mi cuenta' : '🔐 Crear cuenta / Iniciar sesión'}</button>
         </div>
       </div>
@@ -6392,7 +6392,7 @@ function aboutM(){
       Juego de billar para entretenimiento. Las monedas 🪙 y los diamantes 💎 son <b>virtuales</b>, no tienen valor real, no se compran con dinero ni se pueden canjear. No hay juegos de azar con dinero real.
     </div>
     <div class=card style="font-size:13px;line-height:1.45">
-      Tu progreso y tu foto de perfil se guardan <b>en tu dispositivo</b>. Si jugás online, tu nombre, país, resultados y mensajes de partida se guardan en nuestros servidores (Google Firebase) con un identificador anónimo. Sin anuncios, sin analíticas, sin cuenta ni correo.
+      Si jugás como invitado, el progreso queda en este dispositivo. Si creás una cuenta con correo y contraseña, tu progreso y foto de perfil se respaldan en Google Firebase para recuperarlos al cambiar de celular. Sin anuncios ni analíticas.
     </div>
     <button class=b1 style="width:100%;margin-bottom:6px" onclick="window.open(PRIVACY_URL,'_blank')">📄 Política de privacidad</button>
     <button class=b6 style="width:100%" onclick="borrarDatos()">🗑️ Borrar todos mis datos</button>`);
@@ -6416,7 +6416,7 @@ async function borrarDatos(){
 /* ============================================================
    MODERACIÓN DE CONTENIDO DE USUARIOS (requisito Google Play)
    ============================================================ */
-function cloudJSON(){ const o = Object.assign({}, S); delete o.img; return JSON.stringify(o); }
+function cloudJSON(){ return JSON.stringify(S); }
 function esBloqueado(u){ return !!(u && S.bloq && S.bloq[u]); }
 function modRival(){
   if(!G || !G.online || !G.rivalUid) return;
@@ -7370,7 +7370,7 @@ try{
         if(!validarGuardadoCloud(remote)){ notif('No se pudo verificar el respaldo de la cuenta','red'); return; }
         if(progresoLocalReal() && S.uid!==user.uid){
           CUENTA_UID_LOCAL=S.uid;
-          M('<h2>☁️ Recuperar tu cuenta</h2><div class=card>Encontramos progreso en este celular y en tu cuenta. Para evitar perder datos, elegí desde tu perfil qué respaldo querés conservar.</div><button class=b1 style="width:100%" onclick="cuentaM()">Revisar cuenta</button>');
+          M('<h2>☁️ Recuperar tu cuenta</h2><div class=card>Encontramos progreso en este celular y en tu cuenta. Para no borrar tus logros, elegí si querés recuperar el respaldo de la cuenta o cancelar y conservar este celular.</div><button class=b1 style="width:100%" onclick="cuentaRestaurar()">Recuperar progreso de la cuenta</button><button class=b5 style="width:100%;margin-top:7px" onclick="cuentaCancelar()">Cancelar y conservar este celular</button>');
           return;
         }
         Object.assign(S,remote); S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||''; S.v=3; save(); H();
