@@ -6254,19 +6254,61 @@ function logout(){ S.login = null; save(); location.reload(); }
    ============================================================ */
 function loginM(){
   const e = $('login');
-  e.innerHTML = `<div class=felt></div><div class=sil style="left:3%">🧍‍♂️</div><div class=sil style="left:14%">🧍‍♀️</div><div class=sil style="right:3%">🧍</div><div class=bl8 style="left:-30px;bottom:-30px;width:130px;height:130px;background:radial-gradient(circle at 35% 30%,#fff,#d8d8d0)"></div><div class=bl8 style="right:-16px;bottom:-14px;width:96px;height:96px;background:radial-gradient(circle at 35% 30%,#ff6a5a,#b3150a);font-size:34px;color:#fff">3</div>
-    <div class=lg-in>
-      <div class=lg-logo>🎱 BILLAR 8</div>
-      <div class=lg-pn><span style="position:absolute;left:10px;top:6px;font-size:min(10vh,44px)">🎁</span><span style="position:absolute;right:10px;top:6px;font-size:min(10vh,44px)">💎</span><h3>¡Juega con tus amigos!</h3><small>¡Obtén recompensas extra!</small></div>
-      <div class=lg-row><button style="background:#111" onclick="loginAcc()"><b style="font-size:1.2em">B8</b> Iniciar sesión</button><button style="background:linear-gradient(#f5a031,#e07a14)" onclick="loginGuest()">🧑 Invitado</button></div>
-      <div class=lg-note>El progreso de invitados se guarda localmente.</div>
+  e.innerHTML = `<div class=felt></div>
+    <div class=bl8 style="left:-34px;bottom:-35px;width:140px;height:140px;background:radial-gradient(circle at 35% 30%,#fff,#d8d8d0)"></div>
+    <div class=bl8 style="right:-20px;bottom:-22px;width:105px;height:105px;background:radial-gradient(circle at 35% 30%,#ff6a5a,#b3150a);font-size:36px;color:#fff">8</div>
+    <div class=lg-in style="gap:16px">
+      <div class=lg-logo style="font-size:clamp(30px,7vw,48px)">🎱 BILLAR 8 PRO</div>
+      <div class=lg-pn style="padding:24px 18px 20px">
+        <h3 style="font-size:21px">¡Bienvenido!</h3>
+        <small style="display:block;margin-top:8px;font-size:14px;color:#e5e9f2">Elegí cómo querés ingresar al juego</small>
+      </div>
+      <div style="width:100%;max-width:400px;display:grid;gap:11px">
+        <button onclick="loginSocial('google')" style="width:100%;padding:15px 12px;border:0;border-radius:12px;background:#fff;color:#202124;font-size:16px;font-weight:800;box-shadow:0 4px 14px #0005">🌐 CONTINUAR CON GOOGLE</button>
+        <button onclick="loginSocial('facebook')" style="width:100%;padding:15px 12px;border:0;border-radius:12px;background:#1877f2;color:#fff;font-size:16px;font-weight:800;box-shadow:0 4px 14px #0005">f CONTINUAR CON FACEBOOK</button>
+        <button onclick="loginGuest()" style="width:100%;padding:15px 12px;border:1px solid #36b879;border-radius:12px;background:linear-gradient(135deg,#218b58,#12613e);color:#fff;font-size:16px;font-weight:800;box-shadow:0 4px 14px #0005">👤 CONTINUAR COMO INVITADO</button>
+      </div>
+      <div id="loginMsg" class=lg-note style="font-size:12px;line-height:1.5;color:#d5d9e5">Como invitado podés jugar sin registrarte. Vinculá Google o Facebook para recuperar tu progreso al cambiar de celular.</div>
     </div>`;
   e.style.display = 'block';
 }
+function loginMsg(t){ const n=$('loginMsg'); if(n) n.textContent=t; }
 function hideLogin(){ $('login').style.display = 'none'; H(); if(PEND.length) M(PEND.splice(0).join('<hr>')); }
-function loginGuest(){ S.login = 'guest'; save(); hideLogin(); }
-function socialM(p){ M(`<h2>Continuar con ${p}</h2><p style="font-size:13px">No disponible en esta versión.</p><input id=lgn maxlength=14 value="${esc(S.name)}" style="width:100%;padding:12px;border-radius:8px;border:0"><p><button class=b1 style="width:100%" onclick="loginSoc('${p}')">Continuar</button></p>`); }
-function loginSoc(p){ const n = ($('lgn').value || '').trim(); if(n.length < 2) return; S.name = n.slice(0, 14); S.login = p; save(); $('modal').style.display = 'none'; hideLogin(); }
+function loginGuest(){ S.login = 'guest'; save(); try{localStorage.setItem('b8_welcome_choice_v1','1');}catch(e){} hideLogin(); }
+async function loginSocial(kind){
+  if(!fbListo()) return loginMsg('El acceso con '+(kind==='google'?'Google':'Facebook')+' todavía no está configurado. Podés entrar como invitado.');
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+    const auth=firebase.auth();
+    auth.languageCode='es';
+    const provider=kind==='google' ? new firebase.auth.GoogleAuthProvider() : new firebase.auth.FacebookAuthProvider();
+    if(kind==='google') provider.setCustomParameters({prompt:'select_account'});
+    await dbq();
+    if(auth.currentUser && auth.currentUser.isAnonymous) await auth.currentUser.linkWithRedirect(provider);
+    else await auth.signInWithRedirect(provider);
+  }catch(e){
+    console.warn('Error de acceso social',e);
+    const msg=e && e.code==='auth/operation-not-allowed' ? 'Este método todavía no está habilitado en Firebase.' :
+      e && e.code==='auth/unauthorized-domain' ? 'Firebase debe autorizar el dominio de acceso para esta aplicación.' :
+      'No se pudo iniciar el acceso. Revisá la conexión y la configuración de Firebase.';
+    loginMsg(msg);
+  }
+}
+async function finishSocialRedirect(){
+  try{
+    if(!fbListo()) return;
+    if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+    const result=await firebase.auth().getRedirectResult();
+    if(result && result.user){
+      S.login='account'; S.uid=result.user.uid; save();
+      try{localStorage.setItem('b8_welcome_choice_v1','1');}catch(e){}
+      hideLogin();
+    }
+  }catch(e){
+    console.warn('No se pudo completar el acceso social',e);
+    if($('login').style.display==='block') loginMsg('No se pudo completar el acceso. Podés entrar como invitado o revisar los proveedores de Firebase.');
+  }
+}
 async function loginAcc(){
   let id = null;
   try{ const u = await claude.use('user'); id = u && await u.id(); }catch(e){}
@@ -6897,7 +6939,7 @@ function floatTxt(txt, color){
 
 try{ fit(); }catch(e){ console.error('fit',e); }
 try{ loop(); }catch(e){ console.error('loop',e); }
-try{ if(S && !S.login){ S.login='guest'; save(); } H(); }catch(e){ console.error('boot',e); }
+try{ if(localStorage.getItem('b8_welcome_choice_v1')==='1' && S && S.login){ H(); } else { loginM(); } finishSocialRedirect(); }catch(e){ console.error('boot',e); }
 </script>
 <script>
 /* Funciones online: visibles solo con backend (Firebase configurado). Inicio de sesión/nube manual siempre oculto fuera de Claude. */
