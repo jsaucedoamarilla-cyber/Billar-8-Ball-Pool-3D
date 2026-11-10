@@ -24,7 +24,8 @@ nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}nav button{background:#263
 <header><div class="row"><div><h1>🎱 BILLAR 8 PRO</h1><small>Panel privado de administración y moderación</small></div><button id="logout" class="hidden">Cerrar sesión</button></div></header>
 <main class="wrap">
 <section id="login" class="card"><h2>Acceso del administrador</h2><p class="muted">Ingresá con la cuenta Google que haya sido autorizada como administradora.</p><button id="google" class="good">Continuar con Google</button><p id="loginMsg" class="muted"></p></section>
-<section id="denied" class="card hidden"><h2>Esta cuenta todavía no es administradora</h2><p>Por seguridad, el panel no concede permisos desde aquí.</p><p class="muted">UID de esta cuenta:</p><input id="uid" readonly><button id="copyUid">Copiar UID</button><p class="muted">El propietario debe autorizar este UID en Firebase Console, creando el documento admins/UID. No compartas contraseñas.</p></section>
+<section id="denied" class="card hidden"><h2>Esta cuenta todavía no es administradora</h2><p>Por seguridad, el panel no concede permisos desde aquí.</p><p class="muted">UID de esta cuenta:</p><input id="uid" readonly><button id="copyUid">Copiar UID</button><p class="muted">El propietario debe autorizar este UID en Firebase Console, creando el documento admins/UID. No compartas contraseñas.</p>
+<p id="verifyError" class="muted"></p></section>
 <section id="panel" class="hidden">
 <div class="grid">
 <div class="card"><div class="muted">Jugadores con respaldo en nube</div><div id="nPlayers" class="stat">—</div></div>
@@ -67,7 +68,7 @@ async function start(){
   try{const a=await db.doc('admins/'+u.uid).get();
    if(!a.exists){$('uid').value=u.uid;show('denied',true);return;}
    show('panel',true);await loadAll();
-  }catch(e){$('loginMsg').textContent='No se pudo verificar el permiso: '+e.message;}
+  }catch(e){$('uid').value=u.uid;show('denied',true);$('verifyError').textContent='Google inició sesión, pero Firestore no permitió verificar el permiso: '+e.message+'. Compartí únicamente el UID con el administrador del proyecto; no compartas contraseñas.';}
  });
 }
 $('google').onclick=async()=>{try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithRedirect(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión: '+e.message+' (Abrí el panel en Chrome y permití ventanas emergentes).';}};
