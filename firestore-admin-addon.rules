@@ -1,0 +1,71 @@
+// COMPLEMENTO PROPUESTO PARA EL PANEL ADMINISTRADOR
+// NO PEGAR NI PUBLICAR AÚN: primero comparar con cualquier cambio no publicado
+// que ya exista en Firebase Console. Este complemento se debe integrar en el
+// rules_version/service/match existentes, sin reemplazar reglas ajenas.
+//
+// Agregar dentro de service cloud.firestore { match /databases/{database}/documents { ... }
+
+function isAdmin() {
+  return request.auth != null &&
+    exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+}
+
+// Reemplazar la regla actual de /banned/{id} por:
+match /banned/{id} {
+  allow get: if isAdmin() || (request.auth != null && request.auth.uid == id);
+  allow list: if isAdmin();
+  allow create, update, delete: if isAdmin();
+}
+
+// Reemplazar la regla actual de /reports/{id} por:
+match /reports/{id} {
+  allow create: if notBanned() &&
+    request.resource.data.by == request.auth.uid &&
+    request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t']) &&
+    optStr(request.resource.data, 'motivo', 20) &&
+    optStr(request.resource.data, 'name', 30);
+  allow read, update, delete: if isAdmin();
+}
+
+// Reemplazar la regla actual de /data/users/{id}/{doc=**} por:
+match /data/users/{id}/{doc=**} {
+  allow read: if owner(id) || isAdmin();
+  allow write: if owner(id); // el panel puede consultar, nunca editar los progresos
+}
+
+// Agregar para las sanciones y su historial:
+match /moderation/{uid} {
+  allow read: if isAdmin() || owner(uid);
+  allow create, update: if isAdmin();
+  allow delete: if false;
+  match /events/{eventId} {
+    allow read: if isAdmin() || owner(uid);
+    allow create: if isAdmin();
+    allow update, delete: if false;
+  }
+}
+
+// En la regla ya existente de /notificaciones/{id}/cola/{s}, cambiar SOLO
+// allow create: if notBanned(); por:
+allow create: if notBanned() || isAdmin();
+
+// En /rooms/{room}, ampliar la lectura para que el panel pueda ver salas:
+allow read: if notBanned() || isAdmin();
+
+// En /admins/{id}, agregar:
+match /admins/{id} {
+  allow get: if request.auth != null && request.auth.uid == id;
+  allow list, create, update, delete: if false;
+}
+
+// IMPORTANTE:
+// 1) Crear admins/{UID_DEL_ADMIN} manualmente desde Firebase Console.
+// 2) No habilitar que un usuario cree o modifique su propio documento admins.
+// 3) Las reglas actuales ya consultan banned/{uid} en notBanned(); al crear
+//    banned/{uid}, las operaciones online protegidas por esas reglas quedan denegadas.
+// 4) La sesión de Firebase Auth no se elimina: es un bloqueo del acceso a datos
+//    y funciones online. Un invitado puede volver con otra UID; para evitarlo,
+//    el jugador debe vincular una cuenta permanente.
+// 5) Los invitados sin respaldo cloud no pueden aparecer en la lista de jugadores.
+// 6) El panel no detecta trampas por sí solo; el administrador revisa reportes/evidencias.
+// 7) Estas reglas son una propuesta de integración, NO reglas completas ni listas para publicar.
