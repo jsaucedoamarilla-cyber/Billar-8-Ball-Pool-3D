@@ -499,12 +499,29 @@ img{max-width:100%}
   opacity:0;transition:all .3s;max-width:90vw;text-align:center}
 #mentorTip.on{opacity:1;transform:translateX(-50%) translateY(0)}
 #voicePanel{position:fixed;right:8px;bottom:8px;background:#1a1f30ee;
-  border:1px solid #4a5a80;border-radius:12px;padding:6px;display:none;z-index:35}
+  border:1px solid #4a5a80;border-radius:12px;padding:6px;display:none;z-index:35;
+  flex-wrap:wrap;align-items:center;max-width:min(300px,90vw)}
 #voicePanel.on{display:flex;gap:6px}
 #voicePanel button{width:40px;height:40px;padding:0;font-size:18px;border-radius:50%}
 #micBtn.muted{background:#701a12}
-#voiceStatus{position:absolute;top:-22px;left:50%;transform:translateX(-50%);
-  font-size:10px;background:#000a;padding:2px 8px;border-radius:6px;white-space:nowrap}
+#voiceStatus{position:relative;flex-basis:100%;font-size:10px;text-align:center;
+  background:#000a;padding:3px 8px;border-radius:6px}
+#videoStage{display:none;flex-basis:100%;gap:6px;justify-content:center}
+#videoStage.on{display:flex}
+#voicePanel{position:fixed;right:12px;bottom:86px;width:196px;max-width:78vw;display:none;
+  flex-direction:column;align-items:stretch;gap:6px;z-index:9999;touch-action:pan-y}
+#voicePanel.on{display:flex}
+#voiceStatus{cursor:move;touch-action:none;user-select:none;font-weight:800}
+#videoStage{position:relative;display:none;flex-basis:auto;width:100%;min-height:132px}
+#videoStage.on{display:block}
+#videoStage video{object-fit:cover;background:#080b12;border:1px solid #65749a;border-radius:9px}
+#remoteVideo{display:block;width:100%;height:132px}
+#localVideo{position:absolute;right:6px;top:6px;width:58px;height:76px;z-index:2}
+#voicePanel.mini #videoStage{display:none}
+#voicePanel button{flex:0 0 38px}
+#videoMinBtn{width:38px;height:38px;padding:0;font-size:17px}
+
+#videoBtn.on{background:linear-gradient(#2fa633,#1a5a20)}
 
 /* ============================================================
    STREAMER
@@ -713,6 +730,7 @@ body.streamer::after{content:'';position:absolute;inset:0;pointer-events:none;
     <div id="talk">
       <button id="chatBtn" class="b3" onclick="chatToggle()" aria-label="Mensajes">💬<em id="chatDot"></em></button>
       <button id="vozBtn" class="b5" onclick="vozToggle()" aria-label="Hablar">🎤</button>
+      <button id="videoBtn" class="b5" onclick="vozVideoToggle()" aria-label="Videollamada">📹</button>
     </div>
     <div id="chatBox">
       <div id="chatLog"></div>
@@ -723,10 +741,16 @@ body.streamer::after{content:'';position:absolute;inset:0;pointer-events:none;
     <div id="gm"></div>
     <div id="mentorTip"></div>
     <div id="voicePanel">
-      <span id="voiceStatus">🎤 Demo</span>
-      <button id="micBtn" onclick="toggleMic()">🎤</button>
-      <button id="spkBtn" onclick="toggleSpeaker()">🔊</button>
-      <button onclick="cerrarVoz()">✕</button>
+      <span id="voiceStatus">⠿ Videollamada · arrastrame</span>
+      <button id="videoMinBtn" onclick="vozMiniToggle()" aria-label="Minimizar video">－</button>
+      <div id="videoStage">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline muted></video>
+      </div>
+      <button id="micBtn" onclick="toggleMic()" aria-label="Silenciar micrófono">🎤</button>
+      <button id="spkBtn" onclick="toggleSpeaker()" aria-label="Activar parlante">🔊</button>
+      <button id="camBtn" onclick="toggleCamera()" aria-label="Apagar cámara">📷</button>
+      <button onclick="cerrarVoz()" aria-label="Colgar">✕</button>
     </div>
   </div>
 </div>
@@ -3293,6 +3317,7 @@ function celebrate(name){
 }
 function quit(){
   if(!G) return;
+  if(typeof VOZ!=='undefined' && VOZ.activo) cerrarVoz();
   const m = G.cfg.mode;
   if(G.online){
     const go = () => { try{ upd({ ab:G.me }); }catch(e){} if(NU){ NU(); NU = null; } G = null; H(); };
@@ -6466,34 +6491,180 @@ function actualizarStreamerCount(n){
   const e = $('streamerCount'); if(e) e.textContent = n;
 }
 
-let VOZ = { activo:false };
-async function iniciarVoz(){
-  if(!G || !G.online) return notif('Solo en partidas online', 'red');
+let VOZ = { activo:false, muted:false, spkOn:true, video:false, pc:null, stream:null, remoteStream:null,
+  ownRef:null, remoteRef:null, unsubs:[], pending:[], audio:null, offerSeen:false, answerSeen:false };
+function vozEstado(t){ const e=$('voiceStatus'); if(e) e.textContent=t; }
+async function vozLimpiarSenales(ref){
+  try{ const q=await ref.collection('candidates').get(); await Promise.all(q.docs.map(d=>d.ref.delete())); }catch(e){}
+}
+async function iniciarVoz(conVideo=false){
+  if(!G || !G.online) return notif('La voz funciona en partidas online', 'red');
   if(VOZ.activo) return;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.RTCPeerConnection)
+    return notif('Este navegador no permite llamadas de voz', 'red');
   try{
-    VOZ.stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
-    VOZ.activo = true;
-    notif('🎤 Voz iniciada', 'green');
+    const db=await dbq();
+    if(!db || !G || !G.online) return notif('No se pudo conectar con la sala', 'red');
+    VOZ.stream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:conVideo ? {facingMode:'user',width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30}} : false
+    });
+    VOZ.video=!!conVideo;
+    VOZ.ownRef=G.ref.collection('voice').doc(S.uid);
+    VOZ.remoteRef=G.ref.collection('voice').doc(G.rivalUid);
+    await vozLimpiarSenales(VOZ.ownRef);
+    await VOZ.ownRef.set({name:String(S.name||'Jugador').slice(0,30),role:G.me===0?'host':'guest',startedAt:Date.now(),offer:null,answer:null},{merge:false});
+    VOZ.pc=new RTCPeerConnection({iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'}
+    ]});
+    VOZ.stream.getTracks().forEach(track=>VOZ.pc.addTrack(track,VOZ.stream));
+    VOZ.pc.ontrack=e=>{
+      VOZ.remoteStream=e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+      if(!VOZ.audio){
+        VOZ.audio=document.createElement('audio'); VOZ.audio.id='b8RemoteVoice';
+        VOZ.audio.autoplay=true; VOZ.audio.playsInline=true; VOZ.audio.style.display='none';
+        document.body.appendChild(VOZ.audio);
+      }
+      VOZ.audio.srcObject=VOZ.remoteStream;
+      VOZ.audio.muted=!VOZ.spkOn;
+      const p=VOZ.audio.play(); if(p && p.catch) p.catch(()=>vozEstado('Tocá 🔊 para oír al rival'));
+      if(VOZ.video){
+        const local=$('localVideo'), remote=$('remoteVideo');
+        if(local){local.srcObject=VOZ.stream;local.play().catch(()=>{});}
+        if(remote){remote.srcObject=VOZ.remoteStream;remote.play().catch(()=>{});}
+        $('videoStage').classList.add('on');
+        $('videoBtn').classList.add('on');
+      }
+      vozEstado(VOZ.video?'🟢 Videollamada conectada':'🟢 Audio conectado');
+    };
+    VOZ.pc.onicecandidate=e=>{
+      if(e.candidate && VOZ.ownRef) VOZ.ownRef.collection('candidates').add(e.candidate.toJSON()).catch(()=>{});
+    };
+    VOZ.pc.onconnectionstatechange=()=>{
+      const st=VOZ.pc && VOZ.pc.connectionState;
+      if(st==='connected'){vozEstado('🟢 Voz conectada');}
+      else if(st==='connecting'){vozEstado('🔄 Conectando voz…');}
+      else if(st==='disconnected'){vozEstado('⚠️ Voz interrumpida');}
+      else if(st==='failed'){vozEstado('❌ No se pudo conectar');}
+    };
+    VOZ.unsubs.push(VOZ.remoteRef.onSnapshot(async sn=>{
+      const d=sn.data(); if(!d || !VOZ.pc) return;
+      try{
+        if(G.me===1 && d.offer && !VOZ.offerSeen && !VOZ.pc.remoteDescription){
+          VOZ.offerSeen=true;
+          await VOZ.pc.setRemoteDescription(new RTCSessionDescription(d.offer));
+          const ans=await VOZ.pc.createAnswer();
+          await VOZ.pc.setLocalDescription(ans);
+          await VOZ.ownRef.set({answer:{type:ans.type,sdp:ans.sdp}},{merge:true});
+          vozEstado('🔄 Esperando al rival…');
+          for(const c of VOZ.pending.splice(0)) await VOZ.pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{});
+        }
+        if(G.me===0 && d.answer && !VOZ.answerSeen && !VOZ.pc.remoteDescription){
+          VOZ.answerSeen=true;
+          await VOZ.pc.setRemoteDescription(new RTCSessionDescription(d.answer));
+          for(const c of VOZ.pending.splice(0)) await VOZ.pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{});
+        }
+      }catch(err){vozEstado('⚠️ Error al establecer la llamada');}
+    }));
+    VOZ.unsubs.push(VOZ.remoteRef.collection('candidates').onSnapshot(sn=>{
+      sn.docChanges().forEach(ch=>{
+        if(ch.type!=='added' || !VOZ.pc) return;
+        const c=ch.doc.data();
+        if(VOZ.pc.remoteDescription) VOZ.pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{});
+        else VOZ.pending.push(c);
+      });
+    }));
+    VOZ.activo=true; VOZ.muted=false; VOZ.spkOn=true;
     $('voicePanel').classList.add('on');
-    $('voiceStatus').textContent = '🟢 Conectado (demo)';
-  }catch(e){ notif('No se pudo acceder al micrófono', 'red'); }
+    $('videoStage').classList.toggle('on',VOZ.video);
+    $('videoBtn').classList.toggle('on',VOZ.video);
+    $('camBtn').style.display=VOZ.video?'block':'none';
+    if(VOZ.video && $('localVideo')) $('localVideo').srcObject=VOZ.stream;
+    $('micBtn').classList.remove('muted'); $('micBtn').textContent='🎤';
+    $('spkBtn').style.background='linear-gradient(#1e4fd8,#0e2a5e)';
+    vozEstado(VOZ.video?(G.me===0?'📹 Llamando por video…':'⏳ Esperando video…'):(G.me===0?'📞 Llamando al rival…':'⏳ Esperando llamada…'));
+    if(G.me===0){
+      const offer=await VOZ.pc.createOffer();
+      await VOZ.pc.setLocalDescription(offer);
+      await VOZ.ownRef.set({offer:{type:offer.type,sdp:offer.sdp}},{merge:true});
+    }
+    notif(VOZ.video?'📹 Cámara y micrófono activados. El rival también debe iniciar videollamada.':'🎤 Micrófono activado. Conectando con tu rival…','green');
+  }catch(e){
+    cerrarVoz();
+    notif(e && e.name==='NotAllowedError'?(conVideo?'Permití cámara y micrófono para la videollamada':'Permití el micrófono para hablar'):'No se pudo iniciar la llamada','red');
+  }
 }
 function cerrarVoz(){
-  if(VOZ.stream){ VOZ.stream.getTracks().forEach(t => t.stop()); VOZ.stream = null; }
-  VOZ.activo = false;
-  $('voicePanel').classList.remove('on');
-  notif('Voz cerrada', '');
+  VOZ.unsubs.forEach(u=>{try{u();}catch(e){}}); VOZ.unsubs=[];
+  if(VOZ.pc){try{VOZ.pc.close();}catch(e){} VOZ.pc=null;}
+  if(VOZ.stream){VOZ.stream.getTracks().forEach(t=>t.stop());VOZ.stream=null;}
+  if(VOZ.audio){VOZ.audio.srcObject=null;VOZ.audio.remove();VOZ.audio=null;}
+  ['localVideo','remoteVideo'].forEach(id=>{const v=$(id);if(v){v.pause();v.srcObject=null;}});
+  if(VOZ.ownRef){const ref=VOZ.ownRef; vozLimpiarSenales(ref); ref.delete().catch(()=>{});}
+  VOZ.remoteRef=null; VOZ.ownRef=null; VOZ.remoteStream=null; VOZ.pending=[];
+  VOZ.activo=false; VOZ.muted=false; VOZ.video=false; VOZ.offerSeen=false; VOZ.answerSeen=false;
+  $('voicePanel').classList.remove('on'); $('videoStage').classList.remove('on');
+  $('videoBtn').classList.remove('on'); $('camBtn').style.display='none';
+  $('micBtn').classList.remove('muted'); $('micBtn').textContent='🎤';
+  if($('vozBtn')) $('vozBtn').classList.remove('on');
 }
 function toggleMic(){
-  if(!VOZ.activo) return;
-  VOZ.muted = !VOZ.muted;
-  $('micBtn').classList.toggle('muted', VOZ.muted);
-  $('micBtn').textContent = VOZ.muted ? '🔇' : '🎤';
+  if(!VOZ.activo || !VOZ.stream) return;
+  VOZ.muted=!VOZ.muted;
+  VOZ.stream.getAudioTracks().forEach(t=>t.enabled=!VOZ.muted);
+  $('micBtn').classList.toggle('muted',VOZ.muted);
+  $('micBtn').textContent=VOZ.muted?'🔇':'🎤';
+  vozEstado(VOZ.muted?'🔇 Micrófono silenciado':'🟢 Micrófono activo');
 }
 function toggleSpeaker(){
-  VOZ.spkOn = !VOZ.spkOn;
-  $('spkBtn').style.background = VOZ.spkOn ? 'linear-gradient(#1e4fd8,#0e2a5e)' : '#555b70';
+  VOZ.spkOn=!VOZ.spkOn;
+  if(VOZ.audio) VOZ.audio.muted=!VOZ.spkOn;
+  $('spkBtn').style.background=VOZ.spkOn?'linear-gradient(#1e4fd8,#0e2a5e)':'#555b70';
+  if(VOZ.spkOn && VOZ.audio){const p=VOZ.audio.play();if(p&&p.catch)p.catch(()=>{});}
 }
+function toggleCamera(){
+  if(!VOZ.activo || !VOZ.video || !VOZ.stream) return;
+  const tracks=VOZ.stream.getVideoTracks(); if(!tracks.length) return;
+  const enabled=!tracks[0].enabled;
+  tracks.forEach(t=>t.enabled=enabled);
+  $('camBtn').textContent=enabled?'📷':'🚫';
+  $('camBtn').style.background=enabled?'linear-gradient(#1e4fd8,#0e2a5e)':'#701a12';
+  vozEstado(enabled?'📹 Cámara encendida':'📷 Cámara apagada');
+}
+async function vozVideoToggle(){
+  if(!G || !G.online) return notif('La videollamada funciona en partidas online 1 contra 1','red');
+  if(VOZ.activo){
+    if(VOZ.video){toggleCamera();return;}
+    cerrarVoz();
+    notif('Reiniciando llamada con video. Tu rival también debe tocar 📹.','');
+  }
+  await iniciarVoz(true);
+}
+function vozMiniToggle(){
+  const p=$('voicePanel'); if(!p) return;
+  p.classList.toggle('mini');
+  const b=$('videoMinBtn');
+  if(b){const mini=p.classList.contains('mini');b.textContent=mini?'＋':'－';b.setAttribute('aria-label',mini?'Ampliar video':'Minimizar video');}
+}
+(function vozPanelMovible(){
+  const p=$('voicePanel'), h=$('voiceStatus'); if(!p||!h) return;
+  let active=false, sx=0, sy=0, left=0, top=0;
+  h.addEventListener('pointerdown',e=>{
+    active=true; const r=p.getBoundingClientRect(); sx=e.clientX; sy=e.clientY; left=r.left; top=r.top;
+    p.style.left=left+'px';p.style.top=top+'px';p.style.right='auto';p.style.bottom='auto';
+    try{h.setPointerCapture(e.pointerId);}catch(_){}
+    e.preventDefault();
+  });
+  h.addEventListener('pointermove',e=>{
+    if(!active)return;
+    const x=Math.max(0,Math.min(innerWidth-p.offsetWidth,left+e.clientX-sx));
+    const y=Math.max(0,Math.min(innerHeight-p.offsetHeight,top+e.clientY-sy));
+    p.style.left=x+'px';p.style.top=y+'px';
+  });
+  const stop=()=>{active=false;};
+  h.addEventListener('pointerup',stop);h.addEventListener('pointercancel',stop);
+})();
 
 function previsualizarSonidos(){
   M(`<h2>🎵 Sonidos por nivel</h2>${[1,2,3,4,5].map(n => {
