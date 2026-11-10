@@ -115,6 +115,71 @@ service cloud.firestore {
     match /torneos_suizos/{t}      { allow read, create, update: if notBanned(); }
     match /torneos_espectables/{t} { allow read, create, update: if notBanned(); }
 
+
+    // Amigos: cada jugador administra únicamente su propia lista.
+    match /friends/{uid}/list/{friendUid} {
+      allow read, create, update, delete: if owner(uid);
+    }
+    // Solicitudes: solo quien las envía puede crear; solo destinatario puede aceptar/rechazar.
+    match /friend_requests/{requestId} {
+      allow create: if notBanned()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['from','to','fromName','toName','status','createdAt']);
+      allow read: if notBanned()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow update: if notBanned()
+        && resource.data.to == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','acceptedAt'])
+        && request.resource.data.status in ['accepted','rejected'];
+      allow delete: if false;
+    }
+    // Torneos: inscripción abierta, cruces creados por el organizador.
+    match /tournaments/{tid} {
+      allow read: if notBanned();
+      allow create: if notBanned()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.uids is list
+        && request.resource.data.uids.hasAny([request.auth.uid]);
+      allow update: if notBanned() && (
+        resource.data.creatorUid == request.auth.uid
+        || (resource.data.status == 'registration'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uids','players'])
+          && request.resource.data.uids.hasAll(resource.data.uids)
+          && request.resource.data.uids.hasAny([request.auth.uid])
+          && request.resource.data.uids.size() <= resource.data.maxPlayers)
+      );
+      allow delete: if false;
+      match /matches/{mid} {
+        function isMatchPlayer() {
+          return notBanned() && (resource.data.aUid == request.auth.uid || resource.data.bUid == request.auth.uid);
+        }
+        allow read: if notBanned();
+        allow create: if notBanned()
+          && get(/databases/$(database)/documents/tournaments/$(tid)).data.creatorUid == request.auth.uid;
+        allow update: if isMatchPlayer()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['winnerUid','status','confirmedAt'])
+          && exists(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)/reports/$(resource.data.aUid))
+          && exists(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)/reports/$(resource.data.bUid))
+          && get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)/reports/$(resource.data.aUid)).data.winnerUid == request.resource.data.winnerUid
+          && get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)/reports/$(resource.data.bUid)).data.winnerUid == request.resource.data.winnerUid;
+        allow delete: if false;
+        match /reports/{uid} {
+          allow read: if notBanned()
+            && (get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)).data.aUid == request.auth.uid
+              || get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)).data.bUid == request.auth.uid);
+          allow create: if owner(uid)
+            && (get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)).data.aUid == request.auth.uid
+              || get(/databases/$(database)/documents/tournaments/$(tid)/matches/$(mid)).data.bUid == request.auth.uid)
+            && request.resource.data.keys().hasOnly(['winnerUid','reportedAt'])
+            && request.resource.data.winnerUid is string;
+          allow update, delete: if false;
+        }
+      }
+    }
+
     // Todo lo demás: denegado
     match /{document=**} { allow read, write: if false; }
   }
