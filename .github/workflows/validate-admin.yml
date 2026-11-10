@@ -27,7 +27,7 @@ jobs:
           const fs = require('fs');
           for (const file of ['app/www/index.html', 'app/www/admin.html']) {
             const html = fs.readFileSync(file, 'utf8');
-            const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)]
+            const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
               .map(match => match[1])
               .filter(source => source.trim());
             if (!scripts.length) throw new Error('No se encontraron scripts en ' + file);
