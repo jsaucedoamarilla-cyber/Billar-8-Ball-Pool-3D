@@ -51,7 +51,19 @@ service cloud.firestore {
         allow create: if notBanned();
         allow update, delete: if false;
       }
-      match /spectators/{id} { allow read, write: if notBanned(); }
+      match /spectators/{id} {
+        allow read: if notBanned();
+        allow create, update: if owner(id)
+          && request.resource.data.keys().hasOnly(['n','t','favorite'])
+          && request.resource.data.keys().hasAll(['n','t','favorite'])
+          && request.resource.data.n is string
+          && request.resource.data.n.size() <= 30
+          && request.resource.data.t is number
+          && (request.resource.data.favorite == null
+              || request.resource.data.favorite == 0
+              || request.resource.data.favorite == 1);
+        allow delete: if owner(id);
+      }
       match /replay/{id} {
         allow read: if notBanned();
         allow write: if notBanned() && isPlayer(room);

@@ -4067,6 +4067,7 @@ function vsIntro(){
 /* ============================================================
    ESPECTADORES
    ============================================================ */
+let SPEC_UNSUB = null, SPEC_HEARTBEAT = null;
 async function specM(){
   const db = await dbq();
   if(!db) return M('<h2>👁️ Espectadores</h2><p>' + NOD + '</p><p>Para que otros vean tu partida en vivo, la página debe estar publicada con sesión iniciada.</p>');
@@ -4097,7 +4098,9 @@ async function specWatch(cod){
   if(!sn.exists) return notif('La sala se cerró', 'red');
   const d = sn.data();
   const me = await uid();
-  try{ await r.update({ ['spectators.' + me]:{ n:S.name, t:Date.now() } }); }catch(e){}
+  if(SPEC_UNSUB){ SPEC_UNSUB(); SPEC_UNSUB = null; }
+  try{ await r.collection('spectators').doc(me).set({ n:S.name, t:Date.now(), favorite:null }, {merge:true}); }catch(e){}
+
   X();
   $('home').style.display = 'none';
   $('game').style.display = 'flex';
@@ -4109,10 +4112,12 @@ async function specWatch(cod){
     balls:b0, groups:[null,null], pocketed:[[],[]],
     moving:false, over:false, sp:[0, 0], th:0,
     pn:[(d.h ? d.h.n : 'J1'), (d.g ? d.g.n : 'J2')],
-    ref:r, seq:0, seen:0, applied:0, spec:true,
+    ref:r, seq:0, seen:0, applied:0, spec:true, specUid:me, favorite:null,
     chat:[], pz:0, tt:Date.now(), code:cod
   };
   hud();
+  if(SPEC_HEARTBEAT) clearInterval(SPEC_HEARTBEAT);
+  SPEC_HEARTBEAT = setInterval(() => { if(G && G.spec && G.ref && G.specUid) G.ref.collection('spectators').doc(G.specUid).set({t:Date.now()},{merge:true}).catch(()=>{}); }, 20000);
   NU = r.onSnapshot(s2 => { const nd = s2.data(); if(!nd) return; specIn(nd); });
   if(UN) UN();
   UN = db.collection('rooms/' + cod + '/chat').orderBy('t', 'desc').limit(30).onSnapshot(s2 => {
@@ -4139,17 +4144,22 @@ async function specWatch(cod){
     hud();
   });
   G._chatStart = Date.now();
-  r.collection('spectators').onSnapshot(sn2 => {
+  SPEC_UNSUB = r.collection('spectators').onSnapshot(sn2 => {
     sn2.docChanges().forEach(ch => {
       if(ch.type === 'added'){
         const v = ch.doc.data();
         if(v.t && Date.now() - v.t < 5000) saludarEspectador(v.n || 'alguien');
       }
     });
-    const n = sn2.docs.length;
+    let n = 0;
+    const favoritos = [0,0];
+    sn2.docs.forEach(doc => { const v=doc.data(); if(!v.t || Date.now()-v.t>45000) return; n++; const f=v.favorite; if(f===0 || f===1) favoritos[f]++; });
     if(typeof actualizarStreamerCount === 'function') actualizarStreamerCount(n);
     const e = $('speccnt');
-    if(e) e.textContent = `👥 ${n} espectador${n === 1 ? '' : 'es'} · 🎁 apoya a tu favorito`;
+    if(e) e.textContent = `👥 ${n} espectador${n === 1 ? '' : 'es'} · ⭐ ${favoritos[0]} apoyan a ${G.pn[0]} · ⭐ ${favoritos[1]} apoyan a ${G.pn[1]}`;
+    const f0=$('specfav0'), f1=$('specfav1');
+    if(f0) f0.textContent = (G.favorite===0?'⭐ Favorito elegido':'☆ Elegir favorito') + ` (${favoritos[0]})`;
+    if(f1) f1.textContent = (G.favorite===1?'⭐ Favorito elegido':'☆ Elegir favorito') + ` (${favoritos[1]})`;
   });
   r.collection('gifts').onSnapshot(sn2 => {
     sn2.docChanges().forEach(ch => {
@@ -4167,8 +4177,11 @@ async function specWatch(cod){
   $('gm').innerHTML = `<div style="color:#ffd23f;font-weight:900;margin-bottom:8px">👁️ MODO ESPECTADOR</div>
     <div id="speccnt" style="font-size:12px;color:#8a90a8;margin-bottom:8px"></div>
     <button class=b5 style="width:100%;margin-bottom:6px" onclick="specChat()">💬 Enviar mensaje</button>
-    <button class=b1 style="width:100%;margin-bottom:6px" onclick="specGift(0)">🎁 Regalar a ${esc(G.pn[0])}</button>
-    <button class=b2 style="width:100%;margin-bottom:6px" onclick="specGift(1)">🎁 Regalar a ${esc(G.pn[1])}</button>
+    <div style="font-weight:800;margin:8px 0 4px">⭐ Elegí tu jugador favorito</div>
+    <button id=specfav0 class=b1 style="width:100%;margin-bottom:6px" onclick="specSetFavorite(0)">☆ Elegir ${esc(G.pn[0])}</button>
+    <button id=specfav1 class=b2 style="width:100%;margin-bottom:6px" onclick="specSetFavorite(1)">☆ Elegir ${esc(G.pn[1])}</button>
+    <button class=b1 style="width:100%;margin-bottom:6px" onclick="specGift(0)">🎁 Regalar a ${esc(G.pn[0])} · 🪙/💎</button>
+    <button class=b2 style="width:100%;margin-bottom:6px" onclick="specGift(1)">🎁 Regalar a ${esc(G.pn[1])} · 🪙/💎</button>
     <button class=b3 style="width:100%;margin-bottom:6px" onclick="abrirVotacionTroneras()">🗳️ Votar tronera</button>
     <button class=b4 style="width:100%;margin-bottom:6px" onclick="iniciarApuestaEspectadores()">🎰 Abrir apuestas</button>
     <button class=b2 style="width:100%;margin-bottom:6px" onclick="verReplayEspectable('${cod}')">🎬 Ver replay final</button>
@@ -4196,6 +4209,14 @@ function specIn(d){
   if(e) e.textContent = `👥 ${n} espectador${n === 1 ? '' : 'es'} · 🎁 apoya a tu favorito`;
   if(typeof actualizarStreamerCount === 'function') actualizarStreamerCount(n);
 }
+async function specSetFavorite(who){
+  if(!G || !G.spec || !G.ref || (who!==0 && who!==1)) return;
+  try{
+    await G.ref.collection('spectators').doc(G.specUid).set({n:S.name,t:Date.now(),favorite:who},{merge:true});
+    G.favorite=who;
+    notif(`⭐ Ahora apoyás a ${G.pn[who]}`, 'green');
+  }catch(e){ notif('No se pudo guardar tu favorito. Revisá la conexión.', 'red'); }
+}
 function specChat(){
   M('<h2>💬 Mensaje a la mesa</h2><input id=scm maxlength=100 placeholder="Escribí algo para los jugadores" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box"><p><button class=b1 style="width:100%" onclick="specSendChat()">Enviar</button></p>');
 }
@@ -4208,7 +4229,7 @@ async function specSendChat(){
   X(); notif('💬 Enviado', 'green');
 }
 function specGift(who){
-  M(`<h2>🎁 Regalar a ${esc(G.pn[who])}</h2><p style="font-size:13px;color:#8a90a8">Elegí cuánto regalar. Sale de tu saldo.</p>
+  M(`<h2>🎁 Regalar a ${esc(G.pn[who])}</h2><p style="font-size:13px;color:#8a90a8">Elegí cuánto regalar de tu saldo virtual. No se cobra dinero real.</p><p>Tu saldo: <b>${S.coins||0} 🪙</b> · <b>${S.cash||0} 💎</b></p>
     <div class=reward-grid>
       <div class=reward-card><b>100 🪙</b><button class=b1 onclick="specSendGift(${who},100,'coins')">Enviar</button></div>
       <div class=reward-card><b>500 🪙</b><button class=b1 onclick="specSendGift(${who},500,'coins')">Enviar</button></div>
@@ -4219,7 +4240,7 @@ function specGift(who){
 async function specSendGift(who, cant, tipo){
   if(!G || !G.ref) return;
   if(tipo === 'coins' && S.coins < cant) return notif('No te alcanzan las monedas', 'red');
-  if(tipo === 'cash' && S.cash < cant) return notif('No te alcanza la plata', 'red');
+  if(tipo === 'cash' && S.cash < cant) return notif('No te alcanzan los diamantes', 'red');
   if(tipo === 'coins') S.coins -= cant; else S.cash -= cant;
   save();
   try{
@@ -4235,7 +4256,7 @@ async function specSendGift(who, cant, tipo){
   else { snd('giftMega', 1); celebrate(S.name); }
   if(typeof lanzarReaccion === 'function') lanzarReaccion(equiv, S.name);
   X();
-  notif(`🎁 Regalaste ${cant} ${tipo === 'coins' ? '🪙' : '💎'} a ${G.pn[who]}`, 'green');
+  notif(`🎁 Regalaste ${cant} ${tipo === 'coins' ? '🪙' : '💎'} virtuales a ${G.pn[who]}`, 'green');
   try{
     const db = await dbq();
     const me = await uid();
@@ -4256,9 +4277,13 @@ async function specSendGift(who, cant, tipo){
     await refSem.set(prevS);
   }catch(e){}
 }
-function specExit(){
+async function specExit(){
+  const old = G;
+  if(SPEC_UNSUB){ SPEC_UNSUB(); SPEC_UNSUB = null; }
+  if(SPEC_HEARTBEAT){ clearInterval(SPEC_HEARTBEAT); SPEC_HEARTBEAT = null; }
   if(NU){ NU(); NU = null; }
   if(UN){ UN(); UN = null; }
+  if(old && old.spec && old.ref && old.specUid){ try{ await old.ref.collection('spectators').doc(old.specUid).delete(); }catch(e){} }
   G = null;
   $('gm').style.display = 'none';
   $('home').style.display = 'block';
