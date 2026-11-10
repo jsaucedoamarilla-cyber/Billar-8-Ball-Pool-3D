@@ -1,0 +1,17 @@
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.juansaucedo.billar8'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.juansaucedo.billar8'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+    sourceSets {
+        main.assets.srcDirs = ['../../app/www']
+    }
+}
