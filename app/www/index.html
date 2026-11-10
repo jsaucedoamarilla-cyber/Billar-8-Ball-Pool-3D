@@ -6555,6 +6555,10 @@ async function cuentaCrear(){
     if(snap.exists){
       const old=JSON.parse(snap.data().j||'{}');
       if(!validarGuardadoCloud(old)) return cuentaMsg('La cuenta ya tiene un respaldo, pero no se pudo validar. No lo sobrescribimos para proteger tus logros. Contactá soporte.');
+      if(old.uid===user.uid){
+        $('modal').style.display='none'; H();
+        notif('✅ Cuenta creada y progreso respaldado','green'); return;
+      }
       return cuentaMsg('Esta cuenta ya tiene progreso guardado. Iniciá sesión para recuperarlo; no vamos a reemplazarlo.');
     }
     await ref.set({j:cloudJSON(),t:Date.now()});
