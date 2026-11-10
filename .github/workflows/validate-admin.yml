@@ -44,4 +44,4 @@ jobs:
           grep -q "admin_player_index/" app/www/index.html
           grep -q "admin_player_index" app/www/admin.html
           grep -q "match /admin_player_index/{id}" firestore-admin-addon.rules
-          echo "Índice privado y reglas presentes"
+          echo "Índice privado y reglas presentes en BILLAR 8 PRO"
