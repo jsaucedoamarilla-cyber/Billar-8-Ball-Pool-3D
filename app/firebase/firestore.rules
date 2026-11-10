@@ -149,6 +149,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uids'])
           && request.resource.data.uids.hasAll(resource.data.uids)
           && request.resource.data.uids.hasAny([request.auth.uid])
+          && request.resource.data.uids.size() == resource.data.uids.size() + 1
           && request.resource.data.uids.size() <= resource.data.maxPlayers)
       );
       allow delete: if false;
