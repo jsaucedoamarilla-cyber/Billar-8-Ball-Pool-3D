@@ -7307,24 +7307,24 @@ async function torneosRealesM(){
 async function trCrear(){
   try{var x=await frEnsureProfile(),name=($('trName').value||'').trim().slice(0,32),max=Number($('trMax').value||8);if(name.length<3)return notif('Escribe un nombre de al menos 3 letras','red');
     var ref=x.db.collection('tournaments').doc();
-    await ref.set({name:name,creatorUid:x.me,creatorName:S.name,status:'registration',maxPlayers:max,uids:[x.me],players:[{uid:x.me,name:S.name}],createdAt:Date.now(),format:'single-elimination'});
+    await ref.set({name:name,creatorUid:x.me,creatorName:S.name,status:'registration',maxPlayers:max,uids:[x.me],createdAt:Date.now(),format:'single-elimination'});await ref.collection('members').doc(x.me).set({uid:x.me,name:S.name,joinedAt:Date.now()});
     notif('Torneo creado','green');trAbrir(ref.id);
   }catch(e){notif('No se pudo crear el torneo','red');}
 }
 async function trUnirse(id){
   try{var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id);
-    await x.db.runTransaction(async function(tx){var s=await tx.get(ref);if(!s.exists)throw new Error('No existe');var d=s.data();if(d.status!=='registration')throw new Error('Inscripción cerrada');if((d.uids||[]).includes(x.me))return;if(d.uids.length>=d.maxPlayers)throw new Error('Torneo completo');tx.update(ref,{uids:d.uids.concat([x.me]),players:(d.players||[]).concat([{uid:x.me,name:S.name}])});});
+    await x.db.runTransaction(async function(tx){var s=await tx.get(ref);if(!s.exists)throw new Error('No existe');var d=s.data();if(d.status!=='registration')throw new Error('Inscripción cerrada');if((d.uids||[]).includes(x.me))return;if(d.uids.length>=d.maxPlayers)throw new Error('Torneo completo');tx.update(ref,{uids:d.uids.concat([x.me])});});await ref.collection('members').doc(x.me).set({uid:x.me,name:S.name,joinedAt:Date.now()});
     notif('Inscripción confirmada','green');trAbrir(id);
   }catch(e){notif(e.message||'No se pudo inscribir','red');}
 }
 async function trAbrir(id){
   try{var x=await frEnsureProfile();TR_CURRENT=id;
     var ref=x.db.doc('tournaments/'+id),snap=await ref.get();if(!snap.exists)return notif('Torneo no encontrado','red');
-    var d=snap.data(), matches=await ref.collection('matches').get();
+    var d=snap.data(), matches=await ref.collection('matches').get(), members=await ref.collection('members').get();
     var html='<h2>🏆 '+trEsc(d.name)+'</h2><div class="card">Estado: <b>'+trEsc(d.status)+'</b><br>Jugadores: '+(d.uids||[]).length+'/'+d.maxPlayers+'<br>Formato: eliminación directa</div>';
     if(d.creatorUid===x.me&&d.status==='registration'&&(d.uids||[]).length>=2)html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trIniciar(\''+id+'\')">▶ Iniciar torneo y sortear cruces</button>';
     html+='<h3>Participantes</h3>';
-    (d.players||[]).forEach(function(p){html+='<div class="card">🎱 '+trEsc(p.name)+'</div>';});
+    members.forEach(function(doc){var p=doc.data();if((d.uids||[]).includes(doc.id))html+='<div class="card">🎱 '+trEsc(p.name)+'</div>';});
     if(d.creatorUid===x.me&&d.status==='active'&&matches.size&&matches.docs.every(function(q){return q.data().status==='confirmed';}))html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trSiguienteRonda(\''+id+'\')">🏁 Confirmar y avanzar de ronda</button>';
     html+='<button class="b5" style="width:100%;margin-bottom:8px" onclick="trAbrir(\''+id+'\')">🔄 Actualizar torneo</button><button class="b3" style="width:100%;margin-bottom:8px" onclick="trTabla(\''+id+'\')">📊 Tabla de resultados</button>';
     html+='<h3>Partidas</h3>';
@@ -7336,7 +7336,7 @@ async function trAbrir(id){
 }
 async function trIniciar(id){
   try{var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id),s=await ref.get(),d=s.data();if(d.creatorUid!==x.me||d.status!=='registration')return;
-    var players=(d.players||[]).slice().sort(function(){return Math.random()-.5;}),batch=x.db.batch();
+    var members=await ref.collection('members').get(),players=members.docs.filter(function(q){return (d.uids||[]).includes(q.id);}).map(function(q){return q.data();}).sort(function(){return Math.random()-.5;}),batch=x.db.batch();
     for(var i=0;i<players.length;i+=2){var a=players[i],b=players[i+1]||null,mref=ref.collection('matches').doc('R1M'+(i/2+1));
       batch.set(mref,{round:1,aUid:a.uid,aName:a.name,bUid:b?b.uid:null,bName:b?b.name:'Pase libre',status:b?'pending':'confirmed',winnerUid:b?null:a.uid,createdAt:Date.now()});
     }
