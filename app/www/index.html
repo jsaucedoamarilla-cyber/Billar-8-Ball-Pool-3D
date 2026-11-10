@@ -4067,7 +4067,7 @@ function vsIntro(){
 /* ============================================================
    ESPECTADORES
    ============================================================ */
-let SPEC_UNSUB = null;
+let SPEC_UNSUB = null, SPEC_HEARTBEAT = null;
 async function specM(){
   const db = await dbq();
   if(!db) return M('<h2>👁️ Espectadores</h2><p>' + NOD + '</p><p>Para que otros vean tu partida en vivo, la página debe estar publicada con sesión iniciada.</p>');
@@ -4116,6 +4116,8 @@ async function specWatch(cod){
     chat:[], pz:0, tt:Date.now(), code:cod
   };
   hud();
+  if(SPEC_HEARTBEAT) clearInterval(SPEC_HEARTBEAT);
+  SPEC_HEARTBEAT = setInterval(() => { if(G && G.spec && G.ref && G.specUid) G.ref.collection('spectators').doc(G.specUid).set({t:Date.now()},{merge:true}).catch(()=>{}); }, 20000);
   NU = r.onSnapshot(s2 => { const nd = s2.data(); if(!nd) return; specIn(nd); });
   if(UN) UN();
   UN = db.collection('rooms/' + cod + '/chat').orderBy('t', 'desc').limit(30).onSnapshot(s2 => {
@@ -4149,9 +4151,9 @@ async function specWatch(cod){
         if(v.t && Date.now() - v.t < 5000) saludarEspectador(v.n || 'alguien');
       }
     });
-    const n = sn2.docs.length;
+    let n = 0;
     const favoritos = [0,0];
-    sn2.docs.forEach(doc => { const f=doc.data().favorite; if(f===0 || f===1) favoritos[f]++; });
+    sn2.docs.forEach(doc => { const v=doc.data(); if(!v.t || Date.now()-v.t>45000) return; n++; const f=v.favorite; if(f===0 || f===1) favoritos[f]++; });
     if(typeof actualizarStreamerCount === 'function') actualizarStreamerCount(n);
     const e = $('speccnt');
     if(e) e.textContent = `👥 ${n} espectador${n === 1 ? '' : 'es'} · ⭐ ${favoritos[0]} apoyan a ${G.pn[0]} · ⭐ ${favoritos[1]} apoyan a ${G.pn[1]}`;
@@ -4278,6 +4280,7 @@ async function specSendGift(who, cant, tipo){
 async function specExit(){
   const old = G;
   if(SPEC_UNSUB){ SPEC_UNSUB(); SPEC_UNSUB = null; }
+  if(SPEC_HEARTBEAT){ clearInterval(SPEC_HEARTBEAT); SPEC_HEARTBEAT = null; }
   if(NU){ NU(); NU = null; }
   if(UN){ UN(); UN = null; }
   if(old && old.spec && old.ref && old.specUid){ try{ await old.ref.collection('spectators').doc(old.specUid).delete(); }catch(e){} }
