@@ -6374,7 +6374,7 @@ function prof(){
         <div class=sec>☁️ Cuenta y respaldo</div>
         <div class=bx>
           <div style="font-size:13px;margin-bottom:8px">${S.cl && window.firebase && firebase.apps.length && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous ? '🔒 Cuenta protegida · progreso sincronizado' : '🧑 Invitado · progreso guardado en este dispositivo'}</div>
-          <button class=b1 style="width:100%" onclick="cuentaM()">${S.cl ? '⚙️ Administrar mi cuenta' : '🔐 Crear cuenta / Iniciar sesión'}</button>
+          <button class=b1 style="width:100%" onclick="cuentaM()">${S.cl ? '⚙️ Administrar mi cuenta' : '🔗 Vincular Facebook / Google'}</button>
         </div>
       </div>
     </div>`;
@@ -6392,7 +6392,7 @@ function aboutM(){
       Juego de billar para entretenimiento. Las monedas 🪙 y los diamantes 💎 son <b>virtuales</b>, no tienen valor real, no se compran con dinero ni se pueden canjear. No hay juegos de azar con dinero real.
     </div>
     <div class=card style="font-size:13px;line-height:1.45">
-      Si jugás como invitado, el progreso queda en este dispositivo. Si creás una cuenta con correo y contraseña, tu progreso y foto de perfil se respaldan en Google Firebase para recuperarlos al cambiar de celular. Sin anuncios ni analíticas.
+      Si jugás como invitado, el progreso queda en este dispositivo. Si vinculás Facebook o Google, tu progreso y foto de perfil se respaldan en Google Firebase para recuperarlos al cambiar de celular. Sin anuncios ni analíticas.
     </div>
     <button class=b1 style="width:100%;margin-bottom:6px" onclick="window.open(PRIVACY_URL,'_blank')">📄 Política de privacidad</button>
     <button class=b6 style="width:100%" onclick="borrarDatos()">🗑️ Borrar todos mis datos</button>`);
@@ -6478,32 +6478,51 @@ function loginM(){
     <div class=lg-in>
       <div class=lg-logo>🎱 BILLAR 8</div>
       <div class=lg-pn><span style="position:absolute;left:10px;top:6px;font-size:min(10vh,44px)">🎁</span><span style="position:absolute;right:10px;top:6px;font-size:min(10vh,44px)">💎</span><h3>¡Juega con tus amigos!</h3><small>¡Obtén recompensas extra!</small></div>
-      <div class=lg-row><button style="background:#111" onclick="loginAcc()"><b style="font-size:1.2em">B8</b> Iniciar sesión</button><button style="background:linear-gradient(#f5a031,#e07a14)" onclick="loginGuest()">🧑 Invitado</button></div>
-      <div class=lg-note>El progreso de invitados se guarda localmente.</div>
+      <div class=lg-row><button style="background:linear-gradient(#f5a031,#e07a14);width:100%;padding:16px;font-size:17px" onclick="loginGuest()">🧑 CONTINUAR COMO INVITADO</button></div>
+      <div class=lg-note>Entrá y jugá sin registrarte. Después podés vincular Facebook o Google desde tu perfil para respaldar tus avances.</div>
     </div>`;
   e.style.display = 'block';
 }
 function hideLogin(){ $('login').style.display = 'none'; H(); if(PEND.length) M(PEND.splice(0).join('<hr>')); }
 function loginGuest(){ S.login = 'guest'; save(); hideLogin(); }
-function socialM(p){ M(`<h2>Continuar con ${p}</h2><p style="font-size:13px">No disponible en esta versión.</p><input id=lgn maxlength=14 value="${esc(S.name)}" style="width:100%;padding:12px;border-radius:8px;border:0"><p><button class=b1 style="width:100%" onclick="loginSoc('${p}')">Continuar</button></p>`); }
-function loginSoc(p){ const n = ($('lgn').value || '').trim(); if(n.length < 2) return; S.name = n.slice(0, 14); S.login = p; save(); $('modal').style.display = 'none'; hideLogin(); }
+function socialM(p){ return vincularSocial(p); }
+async function vincularSocial(nombre){
+  const p=String(nombre||'').toLowerCase();
+  if(p!=='facebook' && p!=='google') return cuentaMsg('Proveedor no reconocido.');
+  try{
+    if(!fbListo()) return cuentaMsg('La conexión segura todavía no está configurada.');
+    const auth=cuentaFirebase();
+    let user=auth.currentUser;
+    if(!user){ const cr=await auth.signInAnonymously(); user=cr.user; }
+    const Provider=p==='facebook' ? firebase.auth.FacebookAuthProvider : firebase.auth.GoogleAuthProvider;
+    const provider=new Provider(); provider.setCustomParameters({prompt:'select_account'});
+    const already=(user.providerData||[]).some(x=>x.providerId===provider.providerId);
+    if(already){ cuentaMsg('Esta cuenta ya está vinculada. Tu progreso está asociado a ella.'); return; }
+    CUENTA_UID_LOCAL=S.uid;
+    await user.linkWithRedirect(provider);
+  }catch(e){
+    const c=e&&e.code||'';
+    if(c==='auth/credential-already-in-use' || c==='auth/account-exists-with-different-credential'){
+      cuentaMsg('Esa cuenta social ya está asociada a otro jugador. No mezclamos ni borramos progresos automáticamente. Iniciá sesión con esa cuenta desde el dispositivo donde está guardado su progreso o contactá soporte para recuperar la cuenta correcta.');
+    }else if(c==='auth/operation-not-allowed'){
+      cuentaMsg('Este acceso todavía no está activado en Firebase. Hay que habilitar '+(p==='facebook'?'Facebook':'Google')+' en Authentication antes de usarlo.');
+    }else if(c==='auth/unauthorized-domain'){
+      cuentaMsg('El dominio de este juego todavía no está autorizado en Firebase Authentication.');
+    }else{ cuentaMsg('No se pudo vincular la cuenta. Revisá Internet e intentá nuevamente. '+(c?('Código: '+esc(c)):'')); }
+  }
+}
 let CUENTA_UID_LOCAL = null;
 function cuentaMsg(t){ M('<h2>🔐 Mi cuenta BILLAR 8</h2><div class=card>'+t+'</div><button class=b1 style="width:100%" onclick="cuentaM()">Volver</button>'); }
 function cuentaM(){
-  const u = fbListo() && firebase.apps.length ? firebase.auth().currentUser : null;
-  const conectado = !!(u && !u.isAnonymous);
+  const u=fbListo() && firebase.apps.length ? firebase.auth().currentUser : null;
+  const conectado=!!(u && !u.isAnonymous);
+  const proveedores=conectado ? (u.providerData||[]).map(x=>x.providerId==='facebook.com'?'Facebook':x.providerId==='google.com'?'Google':x.providerId).join(' · ') : '';
   M(`<h2>🔐 Mi cuenta BILLAR 8</h2>
-    <div class=card>${conectado ? '✅ Cuenta conectada: <b>'+esc(u.email || '')+'</b>' : 'Creá una cuenta con correo y contraseña para recuperar tus logros en cualquier celular.'}</div>
-    <label style="display:block;margin:8px 0 4px">Correo electrónico</label>
-    <input id="cuentaEmail" type="email" autocomplete="email" placeholder="tu correo" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box">
-    <label style="display:block;margin:8px 0 4px">Contraseña (mínimo 8 caracteres)</label>
-    <input id="cuentaPass" type="password" autocomplete="current-password" placeholder="Tu contraseña" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box">
-    <button class=b1 style="width:100%;margin-top:10px" onclick="cuentaCrear()">🆕 Crear cuenta y guardar mi progreso</button>
-    <button class=b3 style="width:100%;margin-top:7px" onclick="cuentaEntrar()">🔑 Iniciar sesión</button>
-    <button class=b5 style="width:100%;margin-top:7px" onclick="cuentaRecuperar()">📩 Olvidé mi contraseña</button>
-    ${conectado ? '<button class=b6 style="width:100%;margin-top:7px" onclick="logout()">Cerrar sesión</button>' : ''}
-    <p style="font-size:11px;color:#aeb8ce">Tu correo y contraseña sirven para entrar desde otro teléfono. No compartas tu contraseña.</p>`);
-  if(conectado && $('cuentaEmail')) $('cuentaEmail').value=u.email || '';
+    <div class=card>${conectado ? '✅ Cuenta vinculada: <b>'+esc(proveedores||'Cuenta social')+'</b><br>Tu progreso está respaldado en la nube.' : '🧑 Estás jugando como invitado. Vinculá Facebook o Google para respaldar tus logros y recuperarlos en otro teléfono.'}</div>
+    <button style="background:#1877f2;width:100%;margin-top:8px;padding:13px" onclick="vincularSocial('facebook')">f&nbsp; Continuar con Facebook</button>
+    <button style="background:#fff;color:#333;width:100%;margin-top:8px;padding:13px" onclick="vincularSocial('google')">G&nbsp; Continuar con Google</button>
+    ${conectado ? '<button class=b6 style="width:100%;margin-top:10px" onclick="logout()">Cerrar sesión</button>' : ''}
+    <p style="font-size:11px;color:#aeb8ce;margin-top:10px">Al vincular, conservamos el jugador actual y sus avances. Si la cuenta social ya pertenece a otro jugador, no sobrescribimos ningún progreso.</p>`);
 }
 function cuentaError(e){
   const c=e && e.code || '';
