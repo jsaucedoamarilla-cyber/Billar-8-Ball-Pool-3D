@@ -1,0 +1,47 @@
+name: Validar panel BILLAR 8 PRO
+
+on:
+  pull_request:
+    branches:
+      - etapa-8-invitado-facebook-google
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar cambios
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Revisar sintaxis JavaScript del juego y del panel
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          for (const file of ['app/www/index.html', 'app/www/admin.html']) {
+            const html = fs.readFileSync(file, 'utf8');
+            const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)]
+              .map(match => match[1])
+              .filter(source => source.trim());
+            if (!scripts.length) throw new Error('No se encontraron scripts en ' + file);
+            scripts.forEach((source, index) => {
+              try { new Function(source); }
+              catch (error) { throw new Error(file + ' bloque ' + (index + 1) + ': ' + error.message); }
+            });
+            console.log(file + ': ' + scripts.length + ' bloques JavaScript correctos');
+          }
+          NODE
+
+      - name: Verificar cableado del índice privado
+        run: |
+          grep -q "admin_player_index/" app/www/index.html
+          grep -q "admin_player_index" app/www/admin.html
+          grep -q "match /admin_player_index/{id}" firestore-admin-addon.rules
+          echo "Índice privado y reglas presentes"
