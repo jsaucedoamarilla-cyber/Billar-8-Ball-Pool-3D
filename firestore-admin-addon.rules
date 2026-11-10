@@ -113,6 +113,13 @@ service cloud.firestore {
       allow write: if owner(id);
     }
 
+    // Índice mínimo de jugadores: cada cuenta solo escribe su propio documento;
+    // únicamente el administrador puede consultar la colección completa.
+    match /admin_player_index/{id} {
+      allow read: if isAdmin();
+      allow create, update, delete: if owner(id);
+    }
+
     match /data/users/{id}/{doc=**} {
       allow read: if owner(id) || isAdmin();
       allow write: if owner(id);
