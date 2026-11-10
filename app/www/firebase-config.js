@@ -1,17 +1,11 @@
-/* Configuración de Firebase para Billar 8.
-   Mientras apiKey esté vacío, el juego funciona 100% sin conexión y las funciones online quedan ocultas.
-   Pegá acá los valores de: Firebase Console → Configuración del proyecto → Tus apps → Web → firebaseConfig.
-   (La apiKey web NO es un secreto: la seguridad la dan las reglas de Firestore.) */
+/* Firebase web config for BILLAR 8 PRO. Public web keys are protected by Firestore rules. */
 window.B8_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyAX_hUAFNZ0KVsojwSJMuILHlV3fHpqylQ",
+  authDomain: "billar-8-pro.firebaseapp.com",
+  projectId: "billar-8-pro",
+  storageBucket: "billar-8-pro.firebasestorage.app",
+  messagingSenderId: "27907029386",
+  appId: "1:27907029386:web:372f1089a9ab581c023073"
 };
-/* Enlace de tu app en Play Store (para invitar amigos), ej.: https://play.google.com/store/apps/details?id=com.tunombre.billar8 */
 window.B8_INVITE_URL = "";
-/* true = primera versión online: solo partidas 1 vs 1 con chat (con reportar/bloquear) y ranking ELO.
-   Espectadores, clanes, torneos online y rankings de regalos quedan ocultos hasta que sumes moderación para ellos. */
 window.B8_ONLY_MATCHES = true;
