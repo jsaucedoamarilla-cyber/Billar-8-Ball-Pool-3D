@@ -36,8 +36,10 @@ jobs:
           cp app/www/firebase-config.js dist/firebase-config.js
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=admin.html"><title>BILLAR 8 PRO</title>' > dist/index.html
 
-      - name: Configurar GitHub Pages
+      - name: Habilitar y configurar GitHub Pages para la vista previa
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
         with:
           enablement: true
 
