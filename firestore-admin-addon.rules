@@ -45,9 +45,12 @@ match /moderation/{uid} {
   }
 }
 
-// En la regla ya existente de /notificaciones/{id}/cola/{s}, cambiar SOLO
-// allow create: if notBanned(); por:
+// En la regla ya existente de /notificaciones/{id}/cola/{s}, cambiar por:
 allow create: if notBanned() || isAdmin();
+// Permitir que el propio usuario lea y borre su aviso incluso después del bloqueo,
+// para que pueda recibir el tercer aviso; no permitir que edite avisos:
+allow read, delete: if request.auth != null && request.auth.uid == id;
+allow update: if false;
 
 // En /rooms/{room}, ampliar la lectura para que el panel pueda ver salas:
 allow read: if notBanned() || isAdmin();
