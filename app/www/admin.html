@@ -75,16 +75,17 @@ $('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeTe
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['players','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
 $('refresh').onclick=loadAll;
 $('playerFilter').oninput=renderPlayers;
+document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b)return;const uid=b.dataset.uid||'',name=b.dataset.name||'Jugador';if(b.dataset.action==='sanction')sanction(uid,name);if(b.dataset.action==='unban')unban(uid);});
 async function loadAll(){
  msg('Actualizando información…');
  try{
   const [ps,rs,ms,bs]=await Promise.all([
-   db.collectionGroup('save').limit(300).get(),
+   db.collection('admin_player_index').orderBy('updatedAt','desc').limit(300).get(),
    db.collection('reports').orderBy('t','desc').limit(200).get(),
    db.collection('rooms').limit(100).get(),
    db.collection('banned').limit(200).get()
   ]);
-  players=ps.docs.map(d=>{let x={};try{x=JSON.parse(d.data().j||'{}')}catch(_){}return {uid:(d.ref.path.split('/')[2]||''),save:x,t:d.data().t||0};}).sort((a,b)=>b.t-a.t);
+  players=ps.docs.map(d=>({uid:d.id,...d.data()}));
   reports=rs.docs.map(d=>({id:d.id,...d.data()}));
   rooms=ms.docs.map(d=>({id:d.id,...d.data()})).filter(x=>['wait','play'].includes(x.st0));
   banned=bs.docs.map(d=>({uid:d.id,...d.data()}));
@@ -94,17 +95,17 @@ async function loadAll(){
 }
 function renderPlayers(){
  const q=$('playerFilter').value.trim().toLowerCase();
- const list=players.filter(p=>(p.save.name||'').toLowerCase().includes(q)||p.uid.toLowerCase().includes(q));
- $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.save.name||'Jugador')+'</b><span class="pill">'+esc(p.save.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'<br>Correo: '+esc(p.save.accountEmail||'No disponible')+'<br>Monedas: '+money(p.save.coins)+' · Diamantes: '+money(p.save.cash)+'<br>Partidas: '+money(p.save.played)+' · Victorias: '+money(p.save.won)+' · Nivel: '+money(p.save.lvr||1)+'</div><button class="warn" onclick="sanction(\''+esc(p.uid)+'\',\''+esc(p.save.name||'Jugador')+'\')">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">No hay respaldos de jugadores para mostrar. Los invitados que nunca vincularon su cuenta no aparecen aquí.</div>';
+ const list=players.filter(p=>String(p.name||'Jugador').toLowerCase().includes(q)||p.uid.toLowerCase().includes(q)||String(p.accountEmail||'').toLowerCase().includes(q));
+ $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">'+esc(p.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'<br>Correo: '+esc(p.accountEmail||'No disponible')+'<br>Monedas: '+money(p.coins)+' · Diamantes: '+money(p.cash)+'<br>Partidas: '+money(p.played)+' · Victorias: '+money(p.won)+' · Nivel: '+money(p.lvr||1)+'<br>Última sincronización: '+when(p.updatedAt)+'</div><button class="warn" data-action="sanction" data-uid="'+esc(p.uid)+'" data-name="'+esc(p.name||'Jugador')+'">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">Todavía no hay jugadores sincronizados en el índice privado. Cada cuenta permanente se agrega al guardar su progreso; pediles que abran el juego con Internet.</div>';
 }
 function renderReports(){
- $('reportList').innerHTML=reports.length?reports.map(r=>'<div class="item"><b>'+esc(r.name||'Jugador reportado')+'</b> · <span class="pill">'+esc(r.motivo||'motivo no indicado')+'</span><div class="muted">UID denunciado: '+esc(r.target)+'<br>Reportó: '+esc(r.by)+' · Sala: '+esc(r.room)+'<br>'+when(r.t)+'</div><button class="warn" onclick="sanction(\''+esc(r.target)+'\',\''+esc(r.name||'Jugador')+'\')">Revisar y sancionar</button></div>').join(''):'<div class="empty">No hay reportes.</div>';
+ $('reportList').innerHTML=reports.length?reports.map(r=>'<div class="item"><b>'+esc(r.name||'Jugador reportado')+'</b> · <span class="pill">'+esc(r.motivo||'motivo no indicado')+'</span><div class="muted">UID denunciado: '+esc(r.target)+'<br>Reportó: '+esc(r.by)+' · Sala: '+esc(r.room)+'<br>'+when(r.t)+'</div><button class="warn" data-action="sanction" data-uid="'+esc(r.target)+'" data-name="'+esc(r.name||'Jugador')+'">Revisar y sancionar</button></div>').join(''):'<div class="empty">No hay reportes.</div>';
 }
 function renderRooms(){
  $('roomList').innerHTML=rooms.length?rooms.map(r=>'<div class="item"><b>Sala '+esc(r.id)+'</b> · '+esc(r.st0)+'<div class="muted">Jugador 1: '+esc(r.h?.n||'—')+' ('+esc(r.h?.u||'—')+')<br>Jugador 2: '+esc(r.g?.n||'Esperando')+' ('+esc(r.g?.u||'—')+')</div></div>').join(''):'<div class="empty">No hay salas activas.</div>';
 }
 function renderBanned(){
- $('bannedList').innerHTML=banned.length?banned.map(b=>'<div class="item"><b>'+esc(b.name||'Cuenta bloqueada')+'</b><div class="muted">UID: '+esc(b.uid)+'<br>Motivo: '+esc(b.reason||'No indicado')+'<br>'+when(b.t)+'</div><button onclick="unban(\''+esc(b.uid)+'\')">Levantar bloqueo</button></div>').join(''):'<div class="empty">No hay cuentas bloqueadas.</div>';
+ $('bannedList').innerHTML=banned.length?banned.map(b=>'<div class="item"><b>'+esc(b.name||'Cuenta bloqueada')+'</b><div class="muted">UID: '+esc(b.uid)+'<br>Motivo: '+esc(b.reason||'No indicado')+'<br>'+when(b.t)+'</div><button data-action="unban" data-uid="'+esc(b.uid)+'">Levantar bloqueo</button></div>').join(''):'<div class="empty">No hay cuentas bloqueadas.</div>';
 }
 async function sanction(uid,name){
  if(!uid||uid===adminUser.uid)return alert('No podés sancionar tu propia cuenta.');
