@@ -2685,6 +2685,14 @@ function settle(){
   if(m == 'practice'){
     G.pc += real.length;
     if(real.includes(8)) resp(8);
+    if(G.cfg.trainer){
+      const cue=G.balls[0], cx=cue.x, cy=cue.y;
+      G.balls=trainerRack(G.cfg.trainerDrill || 'straight');
+      G.balls[0].x=cx; G.balls[0].y=cy;
+      G.balls[0].vx=G.balls[0].vy=0;
+      G.tt=Date.now();
+      notif('🎯 Ejercicio renovado. Probá otro ángulo.','green');
+    }
     hud();
     save();
     return;
