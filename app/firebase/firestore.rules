@@ -52,6 +52,24 @@ service cloud.firestore {
         allow update, delete: if false;
       }
       match /spectators/{id} { allow read, write: if notBanned(); }
+      // Señalización WebRTC: solo los dos jugadores de esta sala pueden leerla.
+      match /voice/{uid} {
+        allow read: if notBanned() && isPlayer(room);
+        allow create, update: if owner(uid) && isPlayer(room)
+          && request.resource.data.keys().hasOnly(['name','role','startedAt','offer','answer'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 30
+          && request.resource.data.role in ['host','guest'];
+        allow delete: if owner(uid) && isPlayer(room);
+        match /candidates/{candidateId} {
+          allow read: if notBanned() && isPlayer(room);
+          allow create: if owner(uid) && isPlayer(room)
+            && request.resource.data.keys().hasOnly(['candidate','sdpMid','sdpMLineIndex','usernameFragment'])
+            && request.resource.data.candidate is string;
+          allow update: if false;
+          allow delete: if owner(uid) && isPlayer(room);
+        }
+      }
       match /replay/{id} {
         allow read: if notBanned();
         allow write: if notBanned() && isPlayer(room);
