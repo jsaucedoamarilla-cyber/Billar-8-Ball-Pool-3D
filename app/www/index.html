@@ -7218,5 +7218,202 @@ try{ if(S && !S.login){ S.login='guest'; save(); } H(); }catch(e){ console.error
   sweep();
 })();
 </script>
+<script>
+
+/* ===== ETAPA 5: AMIGOS REALES Y TORNEOS ONLINE ===== */
+var FR_HEARTBEAT = null, TR_UN = null, TR_CURRENT = null, TR_MATCH = null;
+function trEsc(v){ return esc(String(v == null ? '' : v)); }
+async function frEnsureProfile(){
+  var db=await dbq(), me=await uid(); if(!db||!me) throw new Error('Sin sesión');
+  var ref=db.doc('fr/'+me);
+  await ref.set({n:String(S.name||'Jugador').slice(0,14),c:String(S.cc||''),sp:Number(S.tr||0),t:Date.now(),u:me},{merge:true});
+  return {db:db,me:me};
+}
+function frHeartbeatStart(){
+  if(FR_HEARTBEAT) clearInterval(FR_HEARTBEAT);
+  frEnsureProfile().catch(function(){});
+  FR_HEARTBEAT=setInterval(function(){frEnsureProfile().catch(function(){});},30000);
+}
+frM = async function(){
+  M('<h2>👫 Amigos online</h2><div id="frReal">Cargando amigos…</div>');
+  try{
+    var x=await frEnsureProfile(), db=x.db, me=x.me;
+    frHeartbeatStart();
+    var list=await db.collection('friends').doc(me).collection('list').get();
+    var requests=await db.collection('friend_requests').where('to','==',me).where('status','==','pending').limit(30).get();
+    var outgoing=await db.collection('friend_requests').where('from','==',me).where('status','==','accepted').limit(50).get();
+    for(var oi=0;oi<outgoing.docs.length;oi++){
+      var rq=outgoing.docs[oi], rd=rq.data();
+      await db.collection('friends').doc(me).collection('list').doc(rd.to).set({uid:rd.to,n:rd.toName||'Amigo',addedAt:Date.now()},{merge:true});
+    }
+    list=await db.collection('friends').doc(me).collection('list').get();
+    var html='<div class="card"><b>Buscar jugador por nombre exacto</b><input id="frSearch" maxlength="14" placeholder="Nombre del jugador" style="width:100%;padding:10px;margin-top:6px;border-radius:8px;border:0"><button class="b1" style="width:100%;margin-top:6px" onclick="frBuscar()">🔎 Buscar</button><div id="frResults"></div></div>';
+    html+='<h3>Solicitudes recibidas ('+requests.size+')</h3>';
+    requests.forEach(function(doc){var q=doc.data();html+='<div class="card">👤 '+trEsc(q.fromName)+'<button class="b1" style="float:right" onclick="frAceptar(\''+trEsc(doc.id)+'\')">Aceptar</button></div>';});
+    html+='<h3>Mis amigos ('+list.size+')</h3>';
+    if(!list.size) html+='<div class="card">Todavía no tienes amigos agregados.</div>';
+    list.forEach(function(doc){var q=doc.data();html+='<div class="card">👤 <b>'+trEsc(q.n)+'</b><br><small>ID: '+trEsc(q.uid)+'</small><button class="b2" style="width:100%;margin-top:6px" onclick="frInvitar(\''+trEsc(q.uid)+'\')">🎱 Invitar a jugar</button></div>';});
+    html+='<button class="b5" style="width:100%;margin-top:8px" onclick="X()">Cerrar</button>';
+    if($('frReal')) $('frReal').innerHTML=html;
+  }catch(e){if($('frReal')) $('frReal').textContent='No se pudo cargar amigos: '+(e.message||'revisa la conexión');}
+};
+async function frBuscar(){
+  var term=($('frSearch')&&$('frSearch').value||'').trim();
+  if(term.length<2){$('frResults').textContent='Escribe al menos 2 letras.';return;}
+  var x=await frEnsureProfile(), snap=await x.db.collection('fr').where('n','==',term).limit(10).get();
+  var html='';
+  snap.forEach(function(doc){var p=doc.data();if(doc.id===x.me)return;html+='<div class="card">👤 <b>'+trEsc(p.n)+'</b> · '+(Date.now()-(p.t||0)<90000?'🟢 Conectado recientemente':'⚪ Desconectado')+'<button class="b1" style="width:100%;margin-top:5px" onclick="frSolicitar(\''+trEsc(doc.id)+'\',\''+trEsc(p.n)+'\')">➕ Enviar solicitud</button></div>';});
+  $('frResults').innerHTML=html||'No encontramos ese nombre. El jugador debe abrir Amigos online al menos una vez.';
+}
+async function frSolicitar(target,name){
+  try{var x=await frEnsureProfile();if(target===x.me)return;
+    var id=x.me+'_'+target, ref=x.db.doc('friend_requests/'+id), old=await ref.get();
+    if(old.exists&&old.data().status==='accepted'){notif('Ya son amigos','green');return;}
+    await ref.set({from:x.me,to:target,fromName:String(S.name||'Jugador').slice(0,14),toName:String(name||'Jugador').slice(0,14),status:'pending',createdAt:Date.now()},{merge:true});
+    notif('Solicitud enviada','green');frM();
+  }catch(e){notif('No se pudo enviar la solicitud','red');}
+}
+async function frAceptar(id){
+  try{var x=await frEnsureProfile(), ref=x.db.doc('friend_requests/'+id), snap=await ref.get();
+    if(!snap.exists||snap.data().to!==x.me)return;
+    var q=snap.data();await ref.update({status:'accepted',acceptedAt:Date.now()});
+    await x.db.collection('friends').doc(x.me).collection('list').doc(q.from).set({uid:q.from,n:q.fromName||'Amigo',addedAt:Date.now()},{merge:true});
+    notif('¡Ahora son amigos!','green');frM();
+  }catch(e){notif('No se pudo aceptar','red');}
+}
+async function frInvitar(friendUid){
+  try{
+    var x=await frEnsureProfile(), fr=await x.db.collection('friends').doc(x.me).collection('list').doc(friendUid).get();
+    if(!fr.exists)return notif('Ese jugador ya no está en tu lista','red');
+    var code=Array.from({length:4},function(){return 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0];}).join('');
+    var room=x.db.doc('rooms/'+code);
+    await room.set({st0:'wait',h:{n:S.name,c:S.cc||'',u:x.me},g:null,k:MPK||'8',b0:JSON.stringify((MPK==='9'?rack9():rack()).map(function(q){return[q.n,q.x,q.y];})),t:Date.now(),specOpen:true,inviteTo:friendUid});
+    var msg='🎱 '+S.name+' te invita a jugar Billar 8. Código de sala: '+code+'. Abre Multijugador → Unirme.';
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+    notif('Sala creada. Comparte el código '+code,'green');
+    var un=room.onSnapshot(function(sn){var d=sn.data();if(d&&d.g){un();mpStart(x.db,code,0,d);}});
+  }catch(e){notif('No se pudo crear la invitación','red');}
+}
+async function torneosRealesM(){
+  M('<h2>🏆 Torneos reales</h2><div id="trLobby">Cargando torneos…</div>');
+  try{
+    var x=await frEnsureProfile(), snap=await x.db.collection('tournaments').where('status','==','registration').limit(30).get();
+    var html='<div class="card"><b>Crear torneo</b><input id="trName" maxlength="32" placeholder="Nombre del torneo" style="width:100%;padding:10px;margin-top:6px;border:0;border-radius:8px"><select id="trMax" style="width:100%;padding:10px;margin-top:6px;border:0;border-radius:8px"><option value="4">4 jugadores</option><option value="8" selected>8 jugadores</option><option value="16">16 jugadores</option><option value="32">32 jugadores</option></select><button class="b1" style="width:100%;margin-top:6px" onclick="trCrear()">➕ Crear torneo</button></div><h3>Torneos abiertos</h3>';
+    snap.forEach(function(doc){var d=doc.data();html+='<div class="card"><b>'+trEsc(d.name)+'</b><br>👥 '+(d.uids||[]).length+'/'+d.maxPlayers+' jugadores<button class="b2" style="width:100%;margin-top:6px" onclick="trUnirse(\''+doc.id+'\')">Unirme</button><button class="b3" style="width:100%;margin-top:5px" onclick="trAbrir(\''+doc.id+'\')">Ver torneo</button></div>';});
+    if(!snap.size)html+='<div class="card">No hay torneos abiertos. ¡Crea el primero!</div>';
+    if($('trLobby'))$('trLobby').innerHTML=html;
+  }catch(e){if($('trLobby'))$('trLobby').textContent='No se pudieron cargar torneos: '+(e.message||'conexión');}
+}
+async function trCrear(){
+  try{var x=await frEnsureProfile(),name=($('trName').value||'').trim().slice(0,32),max=Number($('trMax').value||8);if(name.length<3)return notif('Escribe un nombre de al menos 3 letras','red');
+    var ref=x.db.collection('tournaments').doc();
+    await ref.set({name:name,creatorUid:x.me,creatorName:S.name,status:'registration',maxPlayers:max,uids:[x.me],createdAt:Date.now(),format:'single-elimination'});await ref.collection('members').doc(x.me).set({uid:x.me,name:S.name,joinedAt:Date.now()});
+    notif('Torneo creado','green');trAbrir(ref.id);
+  }catch(e){notif('No se pudo crear el torneo','red');}
+}
+async function trUnirse(id){
+  try{var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id);
+    await x.db.runTransaction(async function(tx){var s=await tx.get(ref);if(!s.exists)throw new Error('No existe');var d=s.data();if(d.status!=='registration')throw new Error('Inscripción cerrada');if((d.uids||[]).includes(x.me))return;if(d.uids.length>=d.maxPlayers)throw new Error('Torneo completo');tx.update(ref,{uids:d.uids.concat([x.me])});});await ref.collection('members').doc(x.me).set({uid:x.me,name:S.name,joinedAt:Date.now()});
+    notif('Inscripción confirmada','green');trAbrir(id);
+  }catch(e){notif(e.message||'No se pudo inscribir','red');}
+}
+async function trAbrir(id){
+  try{var x=await frEnsureProfile();TR_CURRENT=id;
+    var ref=x.db.doc('tournaments/'+id),snap=await ref.get();if(!snap.exists)return notif('Torneo no encontrado','red');
+    var d=snap.data(), matches=await ref.collection('matches').get(), members=await ref.collection('members').get();
+    var html='<h2>🏆 '+trEsc(d.name)+'</h2><div class="card">Estado: <b>'+trEsc(d.status)+'</b><br>Jugadores: '+(d.uids||[]).length+'/'+d.maxPlayers+'<br>Formato: eliminación directa</div>';
+    if(d.creatorUid===x.me&&d.status==='registration'&&(d.uids||[]).length>=2)html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trIniciar(\''+id+'\')">▶ Iniciar torneo y sortear cruces</button>';
+    html+='<h3>Participantes</h3>';
+    members.forEach(function(doc){var p=doc.data();if((d.uids||[]).includes(doc.id))html+='<div class="card">🎱 '+trEsc(p.name)+'</div>';});
+    if(d.creatorUid===x.me&&d.status==='active'&&matches.size&&matches.docs.every(function(q){return q.data().status==='confirmed';}))html+='<button class="b1" style="width:100%;margin-bottom:8px" onclick="trSiguienteRonda(\''+id+'\')">🏁 Confirmar y avanzar de ronda</button>';
+    html+='<button class="b5" style="width:100%;margin-bottom:8px" onclick="trAbrir(\''+id+'\')">🔄 Actualizar torneo</button><button class="b3" style="width:100%;margin-bottom:8px" onclick="trTabla(\''+id+'\')">📊 Tabla de resultados</button>';
+    html+='<h3>Partidas</h3>';
+    matches.forEach(function(doc){var m=doc.data();html+='<div class="card"><b>'+trEsc(m.aName)+' vs '+trEsc(m.bName||'Libre')+'</b><br>Estado: '+trEsc(m.status)+(m.winnerUid?' · Ganador confirmado':'');
+      if(m.status==='pending'&&(m.aUid===x.me||m.bUid===x.me))html+='<button class="b2" style="width:100%;margin-top:5px" onclick="trCrearSala(\''+id+'\',\''+doc.id+'\')">🎱 Crear sala para jugar</button>';
+      html+='</div>';});
+    html+='<button class="b5" style="width:100%;margin-top:8px" onclick="X()">Cerrar</button>';M(html);
+  }catch(e){notif('No se pudo abrir el torneo','red');}
+}
+async function trIniciar(id){
+  try{var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id),s=await ref.get(),d=s.data();if(d.creatorUid!==x.me||d.status!=='registration')return;
+    var members=await ref.collection('members').get(),players=members.docs.filter(function(q){return (d.uids||[]).includes(q.id);}).map(function(q){return q.data();}).sort(function(){return Math.random()-.5;}),batch=x.db.batch();
+    for(var i=0;i<players.length;i+=2){var a=players[i],b=players[i+1]||null,mref=ref.collection('matches').doc('R1M'+(i/2+1));
+      batch.set(mref,{round:1,aUid:a.uid,aName:a.name,bUid:b?b.uid:null,bName:b?b.name:'Pase libre',status:b?'pending':'confirmed',winnerUid:b?null:a.uid,createdAt:Date.now()});
+    }
+    batch.update(ref,{status:'active',startedAt:Date.now(),round:1});await batch.commit();notif('¡Cruces generados!','green');trAbrir(id);
+  }catch(e){notif('No se pudo iniciar el torneo','red');}
+}
+async function trCrearSala(tid,mid){
+  try{var x=await frEnsureProfile(),tref=x.db.doc('tournaments/'+tid),mref=tref.collection('matches').doc(mid),ms=await mref.get(),m=ms.data();
+    if(!m||m.status!=='pending'||(m.aUid!==x.me&&m.bUid!==x.me))return notif('No puedes jugar esta partida','red');
+    var code=Array.from({length:4},function(){return 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0];}).join(''),room=x.db.doc('rooms/'+code);
+    await room.set({st0:'wait',h:{n:S.name,c:S.cc||'',u:x.me},g:null,k:'8',b0:JSON.stringify(rack().map(function(q){return[q.n,q.x,q.y];})),t:Date.now(),specOpen:true,inviteTo:m.aUid===x.me?m.bUid:m.aUid,tournamentId:tid,tournamentMatchId:mid});
+    var msg='🏆 Te toca jugar el torneo '+tid+'. Entra a Billar 8 y usa el código '+code+'.';
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+    var un=room.onSnapshot(function(sn){var d=sn.data();if(d&&d.g){un();mpStart(x.db,code,0,d);G.tournamentId=tid;G.tournamentMatchId=mid;}});
+    notif('Sala creada. Código '+code,'green');
+  }catch(e){notif('No se pudo crear la sala del torneo','red');}
+}
+async function trEntrarSala(code){
+  try{var x=await frEnsureProfile(),ref=x.db.doc('rooms/'+String(code||'').toUpperCase()),s=await ref.get();if(!s.exists)return notif('Sala no encontrada','red');var d=s.data();
+    if(d.inviteTo&&d.inviteTo!==x.me)return notif('Esta invitación es para otro jugador','red');if(d.g)return notif('La sala ya está ocupada','red');
+    var g={n:S.name,c:S.cc||'',u:x.me};await ref.update({g:g,st0:'play'});mpStart(x.db,ref.id,1,d);if(d.tournamentId){G.tournamentId=d.tournamentId;G.tournamentMatchId=d.tournamentMatchId;}
+  }catch(e){notif('No se pudo entrar a la partida','red');}
+}
+async function trReportarResultado(tid,mid,me,winner){
+  try{var db=await dbq(),ref=db.doc('tournaments/'+tid+'/matches/'+mid),s=await ref.get();if(!s.exists)return;var m=s.data();if(me!==m.aUid&&me!==m.bUid)return;
+    await ref.collection('reports').doc(me).set({winnerUid:winner,reportedAt:Date.now()});
+    var rs=await ref.collection('reports').get(),a=rs.docs.find(function(q){return q.id===m.aUid;}),b=rs.docs.find(function(q){return q.id===m.bUid;});
+    if(a&&b&&a.data().winnerUid===b.data().winnerUid){await ref.update({winnerUid:a.data().winnerUid,status:'confirmed',confirmedAt:Date.now()});notif('Resultado confirmado por ambos jugadores','green');}
+    else notif('Resultado enviado. Esperando confirmación del rival.','');
+  }catch(e){console.warn('torneo resultado',e);}
+}
+var _mpStartFriendsT=_mpStartFriendsT||mpStart;
+mpStart=function(db,c,me,d){_mpStartFriendsT(db,c,me,d);if(d&&d.tournamentId){G.tournamentId=d.tournamentId;G.tournamentMatchId=d.tournamentMatchId;}};
+var _mpJoinFriendsT=_mpJoinFriendsT||mpJoin;
+mpJoin=async function(c){var db=await dbq();if(!db)return mpMsg(NOD);var code=(c||($('jc')?$('jc').value:'')).trim().toUpperCase();if(!code)return;var sn=await db.doc('rooms/'+code).get();if(!sn.exists)return mpMsg('No existe esa sala');var d=sn.data();var me=await uid();if(d.inviteTo&&d.inviteTo!==me)return mpMsg('Esta sala está reservada para otro jugador');return _mpJoinFriendsT(code);};
+var _endFriendsT=end;
+end=function(w){
+  var tid=G&&G.tournamentId,mid=G&&G.tournamentMatchId,me=G&&G.me,rival=G&&G.rivalUid,winner=(w===me)?S.uid:rival;
+  _endFriendsT(w);
+  if(tid&&mid&&winner)trReportarResultado(tid,mid,S.uid,winner);
+};
+var _extraMenuFriendsT=extraMenu;
+extraMenu=function(){
+  M('<h2>✨ Más opciones</h2><div class="g"><button class="b1" onclick="X();mpMenu()">🌐 Multijugador</button><button class="b2" onclick="X();frM()">👫 Amigos online</button><button class="b3" onclick="X();torneosRealesM()">🏆 Torneos reales</button><button class="b4" onclick="X();trainAim()">🎯 Entrenador</button><button class="b5" onclick="X();dailyM()">📅 Desafío diario</button><button class="b6" onclick="X();clubM()">🛡️ Clubes</button></div>');
+};
+
+</script>
+<script>
+
+async function trSiguienteRonda(id){
+  try{
+    var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id),root=(await ref.get()).data();
+    if(!root||root.creatorUid!==x.me||root.status!=='active')return;
+    var snap=await ref.collection('matches').get(),all=snap.docs.map(function(q){return Object.assign({id:q.id},q.data());});
+    var last=Math.max.apply(null,all.map(function(m){return Number(m.round)||1;})),current=all.filter(function(m){return Number(m.round)===last;});
+    if(!current.length||current.some(function(m){return m.status!=='confirmed'||!m.winnerUid;}))return notif('Primero deben confirmarse todos los resultados','red');
+    var winners=current.map(function(m){return {uid:m.winnerUid,name:m.winnerUid===m.aUid?m.aName:m.bName};});
+    if(winners.length===1){await ref.update({status:'completed',winnerUid:winners[0].uid,finishedAt:Date.now()});notif('🏆 ¡Torneo finalizado!','green');return trAbrir(id);}
+    var batch=x.db.batch(),round=last+1;
+    for(var i=0;i<winners.length;i+=2){
+      var a=winners[i],b=winners[i+1]||null,mr=ref.collection('matches').doc('R'+round+'M'+(i/2+1));
+      batch.set(mr,{round:round,aUid:a.uid,aName:a.name,bUid:b?b.uid:null,bName:b?b.name:'Pase libre',status:b?'pending':'confirmed',winnerUid:b?null:a.uid,createdAt:Date.now()});
+    }
+    batch.update(ref,{round:round});await batch.commit();notif('Siguiente ronda generada','green');trAbrir(id);
+  }catch(e){notif('No se pudo avanzar: '+(e.message||''),'red');}
+}
+async function trTabla(id){
+  try{
+    var x=await frEnsureProfile(),ref=x.db.doc('tournaments/'+id),s=await ref.collection('matches').get(),stats={};
+    s.forEach(function(doc){var m=doc.data();[m.aUid,m.bUid].forEach(function(uid){if(uid){if(!stats[uid])stats[uid]={name:uid===m.aUid?m.aName:m.bName,w:0,l:0};}});if(m.status==='confirmed'&&m.winnerUid){var loser=m.winnerUid===m.aUid?m.bUid:m.aUid;if(stats[m.winnerUid])stats[m.winnerUid].w++;if(loser&&stats[loser])stats[loser].l++;}});
+    var rows=Object.keys(stats).map(function(uid){return {uid:uid,name:stats[uid].name,w:stats[uid].w,l:stats[uid].l};}).sort(function(a,b){return b.w-a.w||a.l-b.l;});
+    var html='<h2>📊 Tabla del torneo</h2>';
+    rows.forEach(function(p,i){html+='<div class="card"><b>#'+(i+1)+' '+trEsc(p.name)+'</b><br>✅ '+p.w+' victorias · ❌ '+p.l+' derrotas</div>';});
+    html+='<button class="b1" style="width:100%" onclick="trAbrir(\''+id+'\')">Volver al torneo</button>';M(html);
+  }catch(e){notif('No se pudo calcular la tabla','red');}
+}
+
+</script>
 </body>
 </html>
