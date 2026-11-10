@@ -58,6 +58,7 @@ async function start(){
  if(!window.B8_FIREBASE_CONFIG)throw Error('No se encontró firebase-config.js');
  if(!firebase.apps.length)firebase.initializeApp(window.B8_FIREBASE_CONFIG);
  db=firebase.firestore();
+ try{await firebase.auth().getRedirectResult();}catch(e){$('loginMsg').textContent='Google no pudo completar el regreso al panel. Código: '+(e.code||'sin código')+'. Detalle: '+e.message;}
  firebase.auth().onAuthStateChanged(async u=>{
   adminUser=u||null;show('logout',!!u);show('login',!u);show('panel',false);show('denied',false);
   if(!u)return;
@@ -71,7 +72,7 @@ async function start(){
   }catch(e){$('uid').value=u.uid;show('denied',true);$('verifyError').textContent='Google inició sesión, pero Firestore no permitió verificar el permiso: '+e.message+'. Compartí únicamente el UID con el administrador del proyecto; no compartas contraseñas.';}
  });
 }
-$('google').onclick=async()=>{try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithRedirect(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión: '+e.message+' (Abrí el panel en Chrome y permití ventanas emergentes).';}};
+$('google').onclick=async()=>{try{$('loginMsg').textContent='Conectando con Google…';const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithRedirect(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión. Código: '+(e.code||'sin código')+'. Detalle: '+e.message+'. Probá abrir el enlace directamente en Chrome.';}};
 $('logout').onclick=()=>firebase.auth().signOut();
 $('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>msg('UID copiado'));else{$('uid').select();document.execCommand('copy');msg('UID copiado');}};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['players','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
