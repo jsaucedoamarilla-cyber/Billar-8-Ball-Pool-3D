@@ -7410,7 +7410,7 @@ async function trTabla(id){
     var rows=Object.keys(stats).map(function(uid){return {uid:uid,name:stats[uid].name,w:stats[uid].w,l:stats[uid].l};}).sort(function(a,b){return b.w-a.w||a.l-b.l;});
     var html='<h2>📊 Tabla del torneo</h2>';
     rows.forEach(function(p,i){html+='<div class="card"><b>#'+(i+1)+' '+trEsc(p.name)+'</b><br>✅ '+p.w+' victorias · ❌ '+p.l+' derrotas</div>';});
-    html+='<button class="b1" style="width:100%" onclick="trAbrir(\\''+id+'\\')">Volver al torneo</button>';M(html);
+    html+='<button class="b1" style="width:100%" onclick="trAbrir(\''+id+'\')">Volver al torneo</button>';M(html);
   }catch(e){notif('No se pudo calcular la tabla','red');}
 }
 
