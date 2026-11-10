@@ -1,0 +1,49 @@
+name: Publicar vista previa del panel BILLAR 8 PRO
+
+on:
+  push:
+    branches:
+      - etapa-9-panel-admin-moderacion
+    paths:
+      - app/www/admin.html
+      - app/www/firebase-config.js
+      - .github/workflows/deploy-admin-preview.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: billar8-admin-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar cambios
+        uses: actions/checkout@v4
+
+      - name: Preparar solo el panel privado
+        run: |
+          mkdir dist
+          cp app/www/admin.html dist/admin.html
+          cp app/www/firebase-config.js dist/firebase-config.js
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=admin.html"><title>BILLAR 8 PRO</title>' > dist/index.html
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Subir archivos de la vista previa
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Publicar vista previa
+        id: deployment
+        uses: actions/deploy-pages@v4
