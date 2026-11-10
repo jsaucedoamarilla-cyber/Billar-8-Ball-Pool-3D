@@ -3101,6 +3101,7 @@ function draw(){
   }
   const useEscudo = G.cfg.mode == 'vs' && S.escudos !== false;
   ctx.drawImage(useEscudo ? tableImgEscudo(G.cfg.v) : tableImg(G.th || 0), 0, 0, 800, 400);
+  applyPano(ctx);
   for(const b of G.balls) if(b.a) ball(b);
   if(G.cfg && G.cfg.trainer) drawTrainer();
   fxDraw();
@@ -6058,6 +6059,34 @@ setInterval(checkLogrosTacos, 15000);
    PASE / MEDALLAS / STATS
    ============================================================ */
 const PS = [[1,'coins',200],[2,'cash',1],[3,'item','fm:3'],[4,'coins',500],[5,'item','bs:2'],[6,'cash',2],[7,'coins',900],[8,'item','fx:3'],[9,'cash',3],[10,'item','tb:9']];
+
+/* Personalización independiente de paños: se aplica sobre el tapete sin cambiar la mesa. */
+const PANOS = [
+  {n:'Verde clásico',c:'#27834a'},
+  {n:'Azul torneo',c:'#174f9a'},
+  {n:'Rojo borgoña',c:'#8f2637'},
+  {n:'Negro profesional',c:'#242b31'},
+  {n:'Violeta',c:'#63358c'},
+  {n:'Turquesa',c:'#168b89'},
+  {n:'Gris pizarra',c:'#59636d'}
+];
+function setPano(i){ if(!Number.isInteger(i)||!PANOS[i]) return; S.feltColor=i; save(); custM(); }
+function applyPano(target){
+  const p=PANOS[Number.isInteger(S.feltColor)?S.feltColor:0];
+  if(!p||!target) return;
+  target.save();
+  target.beginPath();
+  target.moveTo(50,40); target.lineTo(750,40); target.quadraticCurveTo(760,40,760,50);
+  target.lineTo(760,350); target.quadraticCurveTo(760,360,750,360);
+  target.lineTo(50,360); target.quadraticCurveTo(40,360,40,350);
+  target.lineTo(40,50); target.quadraticCurveTo(40,40,50,40); target.closePath();
+  target.clip();
+  target.globalCompositeOperation='multiply';
+  target.globalAlpha=.24;
+  target.fillStyle=p.c; target.fillRect(40,40,720,320);
+  target.restore();
+}
+
 const CO = {
   'tb:6':['Mesa nocturna ⭐','coins',8000],'tb:7':['Mesa vino tinto ⭐','coins',8000],'tb:8':['Mesa rosa neón ⭐','coins',10000],
   'bs:1':['Bolas neón','coins',4000],'bs:2':['Bolas oro ⭐','x'],'bs:3':['Bolas pastel','coins',3000],'bs:4':['Bolas fuego','coins',5000],
@@ -6082,7 +6111,7 @@ function custM(){
   const own = k => S.co.includes(k);
   const cur = (t, v) => (S[CK[t]] ?? (t == 'tb' ? -1 : 0)) == v;
   const sec = (t, h, free) => `<h3>${h}</h3>` + free.concat(Object.keys(CO).filter(k => k.startsWith(t + ':')).map(k => [+k.split(':')[1], CO[k][0], k])).map(([v, n, k]) => { const eq = cur(t, v), ok = !k || own(k), x = k && CO[k][1] == 'x'; return `<div class=card>${n} ${eq ? '<b>✓</b>' : ok ? `<button class=b1 style="padding:5px 10px" onclick="eqp('${t}',${v})">Equipar</button>` : x ? '🔒 Pase' : `<button class=b2 onclick="buyCo('${k}')">Comprar · ${CO[k][2]} 🪙</button>`}</div>`; }).join('');
-  M('<h2>🎨 Estilo</h2>' + sec('tb', 'Mesas', [[-1, 'Automática'], ...TBN.map((n, i) => [i, n])]) + sec('bs', 'Bolas', [[0, 'Clásicas']]) + sec('fm', 'Marco', [[0, 'Sin marco']]) + sec('fx', 'Efecto', [[0, 'Sin efecto']]) + '<h3>🎨 Tu taco</h3><div class=card style="text-align:center"><b>' + (S.taco ? esc(S.taco.nombre) : 'Sin taco personalizado') + '</b> ' + (S.tacoActivo ? '✅' : '') + '<br><button class=b2 style="margin-top:6px" onclick="X();editorM()">🎨 Editar taco</button></div><h3>Escudos</h3><div class=card>Escudo del distrito: ' + (S.escudos !== false ? '<b>✓ Activado</b> <button class=b5 style="padding:5px 10px" onclick="S.escudos=false;save();custM()">Desactivar</button>' : '<button class=b1 style="padding:5px 10px" onclick="S.escudos=true;save();custM()">Activar</button>') + '</div>');
+  M('<h2>🎨 Estilo</h2>' + sec('tb', 'Mesas', [[-1, 'Automática'], ...TBN.map((n, i) => [i, n])]) + '<h3>🟩 Paños (color independiente)</h3>' + PANOS.map((p,i) => `<div class=card>${p.n} ${(+S.feltColor||0)===i ? '<b>✓ En uso</b>' : `<button class=b1 style="padding:5px 10px" onclick="setPano(${i})">Usar paño</button>`}</div>`).join('') + sec('bs', 'Bolas', [[0, 'Clásicas']]) + sec('fm', 'Marco', [[0, 'Sin marco']]) + sec('fx', 'Efecto', [[0, 'Sin efecto']]) + '<h3>🎨 Tu taco</h3><div class=card style="text-align:center"><b>' + (S.taco ? esc(S.taco.nombre) : 'Sin taco personalizado') + '</b> ' + (S.tacoActivo ? '✅' : '') + '<br><button class=b2 style="margin-top:6px" onclick="X();editorM()">🎨 Editar taco</button></div><h3>Escudos</h3><div class=card>Escudo del distrito: ' + (S.escudos !== false ? '<b>✓ Activado</b> <button class=b5 style="padding:5px 10px" onclick="S.escudos=false;save();custM()">Desactivar</button>' : '<button class=b1 style="padding:5px 10px" onclick="S.escudos=true;save();custM()">Activar</button>') + '</div>');
 }
 function eqp(t, v){
   S[CK[t]] = v;
