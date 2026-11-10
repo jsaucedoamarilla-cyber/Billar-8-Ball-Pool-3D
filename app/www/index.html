@@ -6006,9 +6006,18 @@ async function cloudAuto(){
   try{
     const u=firebase.auth().currentUser;
     if(!u || u.isAnonymous) return;
-    const r=firebase.firestore().doc('data/users/'+u.uid+'/save');
-    await r.set({j:cloudJSON(),t:Date.now()});
-  }catch(e){ console.warn('No se pudo sincronizar el progreso',e); }
+    const db=firebase.firestore(), now=Date.now();
+    const r=db.doc('data/users/'+u.uid+'/save');
+    await r.set({j:cloudJSON(),t:now});
+    // Índice mínimo y privado para que el panel pueda listar cuentas sin escanear rutas dinámicas.
+    await db.doc('admin_player_index/'+u.uid).set({
+      uid:u.uid, name:String(S.name||'Jugador').slice(0,30),
+      accountEmail:String(u.email||'').slice(0,120), login:'account',
+      coins:Number(S.coins||0), cash:Number(S.cash||0),
+      played:Number(S.played||0), won:Number(S.won||0),
+      lvr:Number(S.lvr||1), updatedAt:now
+    },{merge:true});
+  }catch(e){ console.warn('No se pudo sincronizar el progreso o el índice privado',e); }
 }
 function sv(){
   save();
@@ -6403,7 +6412,7 @@ async function borrarDatos(){
     if(fbListo() && firebase.apps.length){
       const db = await dbq(), id = await uid();
       if(db && id){
-        const rutas = ['elo/' + id, 'spectator_rank/' + id, 'spectator_stats/' + id, 'taco_masters/' + id, 'fr/' + id, 'data/users/' + id + '/save', 'data/users/' + id + '/subs'];
+        const rutas = ['elo/' + id, 'spectator_rank/' + id, 'spectator_stats/' + id, 'taco_masters/' + id, 'fr/' + id, 'data/users/' + id + '/save', 'data/users/' + id + '/subs', 'admin_player_index/' + id];
         for(const r of rutas){ try{ await db.doc(r).delete(); }catch(e){} }
         try{ await firebase.auth().currentUser.delete(); }catch(e){}
       }
