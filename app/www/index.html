@@ -3394,6 +3394,7 @@ function celebrate(name){
 }
 function quit(){
   if(!G) return;
+  if(typeof VOZ!=='undefined' && VOZ.activo) cerrarVoz();
   const m = G.cfg.mode;
   if(G.online){
     const go = () => { try{ upd({ ab:G.me }); }catch(e){} if(NU){ NU(); NU = null; } G = null; H(); };
@@ -6678,7 +6679,7 @@ async function iniciarVoz(conVideo=false){
     notif(VOZ.video?'📹 Cámara y micrófono activados. El rival también debe iniciar videollamada.':'🎤 Micrófono activado. Conectando con tu rival…','green');
   }catch(e){
     cerrarVoz();
-    notif(e && e.name==='NotAllowedError'?'Permití el micrófono para hablar':'No se pudo iniciar la llamada de voz','red');
+    notif(e && e.name==='NotAllowedError'?(conVideo?'Permití cámara y micrófono para la videollamada':'Permití el micrófono para hablar'):'No se pudo iniciar la llamada','red');
   }
 }
 function cerrarVoz(){
