@@ -368,6 +368,9 @@ img{max-width:100%}
 /* ============================================================
    TACOS
    ============================================================ */
+.cue-online{width:100%;margin:4px 0 6px;padding:3px 5px;border-radius:7px;background:#050a12aa}
+.cue-online svg{display:block;width:100%;height:22px;overflow:visible}
+.cue-online small{display:block;text-align:center;color:#aeb8ce;font-size:9px;font-weight:800}
 .taco-item{position:relative;overflow:hidden}
 .taco-preview{position:relative;height:56px;display:grid;place-items:center;margin:4px 0;
   background:#00000033;border-radius:8px;padding:4px;overflow:hidden}
@@ -1911,6 +1914,24 @@ function xpBar(i){
   const pct = ((info.actual - prev) / (info.necesario - prev)) * 100;
   return `<div class="taco-xp-bar"><i style="width:${Math.min(100, pct)}%"></i></div><div class="taco-xp-txt">${info.actual}/${info.necesario} XP</div>`;
 }
+function tacoMiniOnline(info){
+  const i = Math.max(0, Math.min(TACO_STYLES.length - 1, Number(info && info.i) || 0));
+  const nivel = Math.max(1, Math.min(5, Number(info && info.l) || 1));
+  const [pun, viro, cuerpo] = TACO_STYLES[i] || TACO_STYLES[0];
+  const opacidad = [.15,.25,.38,.52,.72,.95][nivel];
+  const grad = 'cueonline' + i + 'x' + nivel;
+  return `<svg viewBox="0 0 340 36" role="img" aria-label="Taco nivel ${nivel}">
+    <defs><linearGradient id="${grad}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${pun}"/><stop offset=".18" stop-color="${viro}"/><stop offset=".5" stop-color="${cuerpo}"/><stop offset="1" stop-color="${pun}"/></linearGradient></defs>
+    <rect x="4" y="14" width="38" height="8" rx="3" fill="#f4f4f4"/>
+    <rect x="42" y="12" width="20" height="12" rx="2" fill="${viro}"/>
+    <rect x="62" y="11" width="270" height="14" rx="3" fill="url(#${grad})"/>
+    <path d="M65 13 H328" stroke="#fff" stroke-width="2" opacity="${opacidad}"/>
+    <path d="M90 22 H315" stroke="#000" stroke-width="2" opacity=".28"/>
+    ${nivel>=3 ? '<circle cx="145" cy="18" r="2" fill="#fff"/><circle cx="220" cy="18" r="2" fill="#fff"/>' : ''}
+    ${nivel>=4 ? '<path d="M175 10 l5 5 -5 5 -5 -5z" fill="#fff" opacity=".9"/>' : ''}
+    ${nivel>=5 ? '<path d="M260 8 l3 6 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1z" fill="#fff"/>' : ''}
+  </svg>`;
+}
 function tacoPreviewConEfectos(i){
   const n = getNivelTaco(i);
   const esExclusivo = CUES[i]?.exclusivo;
@@ -2513,7 +2534,7 @@ function hud(){
         </div>
         <div class=sls>${slots(i)}</div>
         ${rest != null ? `<div class=rest-count>Faltan <b>${rest}</b></div>` : ''}
-        <div class="${claseTaco}" style="font-size:9px;color:${nvl === 5 ? '#ffd700' : '#8a90a8'};text-align:center">${i === 0 ? '🎱 ' + (CUES[S.cue]?.n || 'Taco') + ' ' + tacoInfo : ''}</div>
+        <div class=cue-online style="filter:drop-shadow(0 0 ${[0,1.5,3,5,8,12][Math.max(1,Math.min(5,Number(G.cueInfo?.[i]?.l)||1))]}px ${TACO_STYLES[Math.max(0,Math.min(TACO_STYLES.length-1,Number(G.cueInfo?.[i]?.i)||0))][0]})">${tacoMiniOnline(G.cueInfo && G.cueInfo[i])}<small>${i === G.me && c.online ? 'Tu taco' : (c.online ? 'Taco del rival' : (i === 0 ? 'Tu taco' : 'Taco rival'))} · Nv.${Math.max(1,Math.min(5,Number(G.cueInfo?.[i]?.l)||1))}</small></div>
       </div>`;
     };
     const R = i => `<div class="ring" id="rg${i}"><div class="av2">${av(i)}</div></div>`;
@@ -3736,7 +3757,7 @@ async function mpCreate(){
   try{
     await r.set({
       st0:'wait',
-      h:{ n:S.name, c:S.cc || '', u:S.uid },
+      h:{ n:S.name, c:S.cc || '', u:S.uid, q:{i:S.cue || 0,l:getNivelTaco(S.cue)} },
       g:null, k:MPK,
       b0:JSON.stringify((MPK == '9' ? rack9() : rack()).map(q => [q.n, q.x, q.y])),
       t:Date.now(),
@@ -3770,7 +3791,7 @@ async function mpJoin(c){
     if(!sn.exists) return mpMsg('No existe esa sala');
     const d = sn.data();
     if(d.g) return mpMsg('La sala ya está llena');
-    d.g = { n:S.name, c:S.cc || '', u:S.uid };
+    d.g = { n:S.name, c:S.cc || '', u:S.uid, q:{i:S.cue || 0,l:getNivelTaco(S.cue)} };
     await r.update({ g:d.g, st0:'play' });
     $('modal').style.display = 'none';
     mpStart(db, c, 1, d);
@@ -3801,6 +3822,7 @@ function mpStart(db, c, me, d){
   G.code = c;
   G.ref = db.doc('rooms/' + c);
   G.pn = [FL(d.h.c) + ' ' + esc(d.h.n), FL(d.g.c) + ' ' + esc(d.g.n)];
+  G.cueInfo = [d.h && d.h.q ? d.h.q : {i:0,l:1}, d.g && d.g.q ? d.g.q : {i:0,l:1}];
   G.rivalUid = me == 0 ? (d.g && d.g.u) : (d.h && d.h.u);
   G.rivalName = me == 0 ? (d.g && d.g.n) : (d.h && d.h.n);
   G.balls = JSON.parse(d.b0).map(([n, x, y]) => ({ n, x, y, vx:0, vy:0, a:1 }));
