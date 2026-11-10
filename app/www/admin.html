@@ -65,7 +65,7 @@ async function start(){
   }catch(e){$('loginMsg').textContent='No se pudo verificar el permiso: '+e.message;}
  });
 }
-$('google').onclick=async()=>{try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithPopup(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión: '+e.message+' (Abrí el panel en Chrome y permití ventanas emergentes).';}};
+$('google').onclick=async()=>{try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithRedirect(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión: '+e.message+' (Abrí el panel en Chrome y permití ventanas emergentes).';}};
 $('logout').onclick=()=>firebase.auth().signOut();
 $('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>msg('UID copiado'));else{$('uid').select();document.execCommand('copy');msg('UID copiado');}};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['players','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
@@ -80,7 +80,7 @@ async function loadAll(){
    db.collection('rooms').limit(100).get(),
    db.collection('banned').limit(200).get()
   ]);
-  players=ps.docs.map(d=>{let x={};try{x=JSON.parse(d.data().j||'{}')}catch(_){}return {uid:d.ref.parent.id,save:x,t:d.data().t||0};}).sort((a,b)=>b.t-a.t);
+  players=ps.docs.map(d=>{let x={};try{x=JSON.parse(d.data().j||'{}')}catch(_){}return {uid:(d.ref.path.split('/')[2]||''),save:x,t:d.data().t||0};}).sort((a,b)=>b.t-a.t);
   reports=rs.docs.map(d=>({id:d.id,...d.data()}));
   rooms=ms.docs.map(d=>({id:d.id,...d.data()})).filter(x=>['wait','play'].includes(x.st0));
   banned=bs.docs.map(d=>({uid:d.id,...d.data()}));
@@ -104,18 +104,21 @@ function renderBanned(){
 }
 async function sanction(uid,name){
  if(!uid||uid===adminUser.uid)return alert('No podés sancionar tu propia cuenta.');
- const ref=db.doc('moderation/'+uid);
- const old=await ref.get(),n=Number(old.exists?old.data().warnings||0:0)+1;
- const action=n>=3?'BLOQUEAR CUENTA':'ENVIAR AVISO '+n;
- if(!confirm('Jugador: '+name+'\nSiguiente medida: '+action+'\n\nConfirmá solo si revisaste la evidencia.'))return;
+ const ref=db.doc('moderation/'+uid),event=db.collection('moderation/'+uid+'/events').doc();
+ const notification=db.collection('notificaciones/'+uid+'/cola').doc();
+ if(!confirm('Jugador: '+name+'\\nSiguiente medida: aviso 1, aviso 2 o bloqueo al tercer aviso.\\n\\nConfirmá solo si revisaste la evidencia.'))return;
  try{
-  const batch=db.batch(),now=Date.now(),event=db.collection('moderation/'+uid+'/events').doc();
-  batch.set(ref,{uid,name,warnings:n,lastAction:n>=3?'blocked':'warning',reason:'Revisión manual del administrador',updatedAt:now,updatedBy:adminUser.uid},{merge:true});
-  batch.set(event,{level:n,action:n>=3?'blocked':'warning',reason:'Revisión manual del administrador',by:adminUser.uid,t:now});
-  const notification=db.collection('notificaciones/'+uid+'/cola').doc(String(now));
-  batch.set(notification,{titulo:n>=3?'⛔ Cuenta bloqueada':'⚠️ Aviso de moderación',cuerpo:n>=3?'Tu cuenta fue bloqueada por incumplir las reglas de BILLAR 8 PRO. Podés contactar al soporte para solicitar una revisión.':'Recibiste el aviso '+n+' de 3 por una conducta contraria a las reglas. Si vuelve a ocurrir, se aplicará el siguiente nivel de sanción.',tipo:'moderacion',de:'admin',deNombre:'Administración BILLAR 8 PRO',t:now});
-  if(n>=3)batch.set(db.doc('banned/'+uid),{uid,name,reason:'Tres avisos de moderación',t:now,by:adminUser.uid});
-  await batch.commit();alert(n>=3?'Cuenta bloqueada para el acceso online.':'Aviso '+n+' enviado.');await loadAll();
+  const now=Date.now();
+  const n=await db.runTransaction(async tx=>{
+   const old=await tx.get(ref),count=Number(old.exists?old.data().warnings||0:0)+1;
+   const blocked=count>=3;
+   tx.set(ref,{uid,name,warnings:count,lastAction:blocked?'blocked':'warning',reason:'Revisión manual del administrador',updatedAt:now,updatedBy:adminUser.uid},{merge:true});
+   tx.set(event,{level:count,action:blocked?'blocked':'warning',reason:'Revisión manual del administrador',by:adminUser.uid,t:now});
+   tx.set(notification,{titulo:blocked?'⛔ Cuenta bloqueada':'⚠️ Aviso de moderación',cuerpo:blocked?'Tu cuenta fue bloqueada para las funciones online por acumular tres sanciones revisadas. Podés contactar al soporte para solicitar una revisión.':'Recibiste el aviso '+count+' de 3 por una conducta contraria a las reglas. Si vuelve a ocurrir, se aplicará el siguiente nivel de sanción.',tipo:'moderacion',de:'admin',deNombre:'Administración BILLAR 8 PRO',t:now});
+   if(blocked)tx.set(db.doc('banned/'+uid),{uid,name,reason:'Tres sanciones revisadas',t:now,by:adminUser.uid});
+   return count;
+  });
+  alert(n>=3?'Cuenta bloqueada para las funciones online.':'Aviso '+n+' enviado.');await loadAll();
  }catch(e){alert('No se pudo aplicar la medida: '+e.message);}
 }
 async function unban(uid){
