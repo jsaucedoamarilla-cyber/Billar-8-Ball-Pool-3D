@@ -1,74 +1,157 @@
-// COMPLEMENTO PROPUESTO PARA EL PANEL ADMINISTRADOR
-// NO PEGAR NI PUBLICAR AÚN: primero comparar con cualquier cambio no publicado
-// que ya exista en Firebase Console. Este complemento se debe integrar en el
-// rules_version/service/match existentes, sin reemplazar reglas ajenas.
-//
-// Agregar dentro de service cloud.firestore { match /databases/{database}/documents { ... }
+rules_version = '2';
 
-function isAdmin() {
-  return request.auth != null &&
-    exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-}
+service cloud.firestore {
+  match /databases/{database}/documents {
 
-// Reemplazar la regla actual de /banned/{id} por:
-match /banned/{id} {
-  allow get: if isAdmin() || (request.auth != null && request.auth.uid == id);
-  allow list: if isAdmin();
-  allow create, update, delete: if isAdmin();
-}
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function notBanned() {
+      return signedIn() &&
+        !exists(/databases/$(database)/documents/banned/$(request.auth.uid));
+    }
+    function owner(id) { return notBanned() && request.auth.uid == id; }
+    function optStr(d, k, s) {
+      return !(k in d) || (d[k] is string && s >= d[k].size());
+    }
+    function isPlayer(room) {
+      let r = get(/databases/$(database)/documents/rooms/$(room)).data;
+      return r.h.u == request.auth.uid ||
+        (('g' in r) && r.g.u == request.auth.uid);
+    }
 
-// Reemplazar la regla actual de /reports/{id} por:
-match /reports/{id} {
-  allow create: if notBanned() &&
-    request.resource.data.by == request.auth.uid &&
-    request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t']) &&
-    optStr(request.resource.data, 'motivo', 20) &&
-    optStr(request.resource.data, 'name', 30);
-  allow read, update, delete: if isAdmin();
-}
+    // El propietario crea admins/{UID} manualmente desde Firebase Console.
+    // Los clientes solo pueden consultar su propio documento; nunca asignarse roles.
+    match /admins/{id} {
+      allow get: if signedIn() && request.auth.uid == id;
+      allow list, create, update, delete: if false;
+    }
 
-// Reemplazar la regla actual de /data/users/{id}/{doc=**} por:
-match /data/users/{id}/{doc=**} {
-  allow read: if owner(id) || isAdmin();
-  allow write: if owner(id); // el panel puede consultar, nunca editar los progresos
-}
+    match /banned/{id} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == id);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
 
-// Agregar para las sanciones y su historial:
-match /moderation/{uid} {
-  allow read: if isAdmin() || owner(uid);
-  allow create, update: if isAdmin();
-  allow delete: if false;
-  match /events/{eventId} {
-    allow read: if isAdmin() || owner(uid);
-    allow create: if isAdmin();
-    allow update, delete: if false;
+    match /reports/{id} {
+      allow create: if notBanned() &&
+        request.resource.data.by == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t']) &&
+        optStr(request.resource.data, 'motivo', 20) &&
+        optStr(request.resource.data, 'name', 30);
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /rooms/{room} {
+      allow read: if notBanned() || isAdmin();
+      allow create: if notBanned() && request.resource.data.h.u == request.auth.uid;
+      allow update: if notBanned() &&
+        (resource.data.h.u == request.auth.uid ||
+         (('g' in resource.data) && resource.data.g.u == request.auth.uid) ||
+         (!('g' in resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['g','st0']) &&
+          request.resource.data.g.u == request.auth.uid));
+      allow delete: if notBanned() && resource.data.h.u == request.auth.uid;
+
+      match /chat/{id} {
+        allow read: if notBanned();
+        allow create: if notBanned() &&
+          optStr(request.resource.data, 'm', 100) &&
+          optStr(request.resource.data, 'n', 30);
+        allow update, delete: if false;
+      }
+
+      match /gifts/{id} {
+        allow read: if notBanned();
+        allow create: if notBanned();
+        allow update, delete: if false;
+      }
+
+      match /spectators/{id} {
+        allow read, write: if notBanned();
+      }
+
+      match /replay/{id} {
+        allow read: if notBanned();
+        allow write: if notBanned() && isPlayer(room);
+      }
+    }
+
+    match /{path=**}/gifts/{id} {
+      allow read: if notBanned();
+    }
+
+    match /elo/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /spectator_rank/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /spectator_stats/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /spectator_weekly/{w}/top/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /taco_masters/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /fr/{id} {
+      allow read: if notBanned();
+      allow write: if owner(id);
+    }
+
+    match /data/users/{id}/{doc=**} {
+      allow read: if owner(id) || isAdmin();
+      allow write: if owner(id);
+    }
+
+    match /notificaciones/{id}/cola/{s} {
+      allow create: if notBanned() || isAdmin();
+      allow read, delete: if signedIn() && request.auth.uid == id;
+      allow update: if false;
+    }
+
+    match /moderation/{uid} {
+      allow read: if isAdmin() || owner(uid);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+      match /events/{eventId} {
+        allow read: if isAdmin() || owner(uid);
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
+    }
+
+    match /clanes/{c} {
+      allow read: if notBanned();
+      allow create: if notBanned() && optStr(request.resource.data, 'n', 24);
+      allow update: if notBanned();
+      allow delete: if false;
+    }
+
+    match /torneos_suizos/{t} {
+      allow read, create, update: if notBanned();
+    }
+
+    match /torneos_espectables/{t} {
+      allow read, create, update: if notBanned();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
-
-// En la regla ya existente de /notificaciones/{id}/cola/{s}, cambiar por:
-allow create: if notBanned() || isAdmin();
-// Permitir que el propio usuario lea y borre su aviso incluso después del bloqueo,
-// para que pueda recibir el tercer aviso; no permitir que edite avisos:
-allow read, delete: if request.auth != null && request.auth.uid == id;
-allow update: if false;
-
-// En /rooms/{room}, ampliar la lectura para que el panel pueda ver salas:
-allow read: if notBanned() || isAdmin();
-
-// En /admins/{id}, agregar:
-match /admins/{id} {
-  allow get: if request.auth != null && request.auth.uid == id;
-  allow list, create, update, delete: if false;
-}
-
-// IMPORTANTE:
-// 1) Crear admins/{UID_DEL_ADMIN} manualmente desde Firebase Console.
-// 2) No habilitar que un usuario cree o modifique su propio documento admins.
-// 3) Las reglas actuales ya consultan banned/{uid} en notBanned(); al crear
-//    banned/{uid}, las operaciones online protegidas por esas reglas quedan denegadas.
-// 4) La sesión de Firebase Auth no se elimina: es un bloqueo del acceso a datos
-//    y funciones online. Un invitado puede volver con otra UID; para evitarlo,
-//    el jugador debe vincular una cuenta permanente.
-// 5) Los invitados sin respaldo cloud no pueden aparecer en la lista de jugadores.
-// 6) El panel no detecta trampas por sí solo; el administrador revisa reportes/evidencias.
-// 7) Estas reglas son una propuesta de integración, NO reglas completas ni listas para publicar.
