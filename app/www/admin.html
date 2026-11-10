@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827"><title>Administrador · BILLAR 8 PRO</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#eef3ff;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:18px 16px;background:linear-gradient(120deg,#172b45,#111827);border-bottom:1px solid #334155;position:sticky;top:0;z-index:3}
+h1{font-size:21px;margin:0;color:#ffd166}header small{color:#a9b8ce}.wrap{max-width:1100px;margin:auto;padding:16px}
+.card{background:#172235;border:1px solid #30415c;border-radius:14px;padding:14px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.stat{font-size:25px;font-weight:800;color:#ffd166}.muted{color:#a9b8ce;font-size:13px}
+button{border:0;border-radius:10px;padding:11px 14px;background:#365b91;color:white;font-weight:700;cursor:pointer;margin:3px}
+button.warn{background:#b7791f}button.danger{background:#a83232}button.good{background:#23764b}button:disabled{opacity:.45}
+input{width:100%;padding:12px;border-radius:9px;border:1px solid #52647f;background:#0e1727;color:white;margin:6px 0}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}nav button{background:#26364e}nav button.active{background:#b7791f}
+.row{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}.pill{display:inline-block;border-radius:30px;background:#273b56;padding:3px 9px;font-size:12px}
+.item{border-top:1px solid #334155;padding:12px 0}.item:first-child{border:0}.empty{padding:18px;text-align:center;color:#a9b8ce}
+.hidden{display:none!important}#msg{white-space:pre-wrap;color:#ffd166;font-size:13px}
+@media(min-width:700px){.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+</style>
+</head>
+<body>
+<header><div class="row"><div><h1>🎱 BILLAR 8 PRO</h1><small>Panel privado de administración y moderación</small></div><button id="logout" class="hidden">Cerrar sesión</button></div></header>
+<main class="wrap">
+<section id="login" class="card"><h2>Acceso del administrador</h2><p class="muted">Ingresá con la cuenta Google que haya sido autorizada como administradora.</p><button id="google" class="good">Continuar con Google</button><p id="loginMsg" class="muted"></p></section>
+<section id="denied" class="card hidden"><h2>Esta cuenta todavía no es administradora</h2><p>Por seguridad, el panel no concede permisos desde aquí.</p><p class="muted">UID de esta cuenta:</p><input id="uid" readonly><button id="copyUid">Copiar UID</button><p class="muted">El propietario debe autorizar este UID en Firebase Console, creando el documento admins/UID. No compartas contraseñas.</p></section>
+<section id="panel" class="hidden">
+<div class="grid">
+<div class="card"><div class="muted">Jugadores con respaldo en nube</div><div id="nPlayers" class="stat">—</div></div>
+<div class="card"><div class="muted">Reportes pendientes</div><div id="nReports" class="stat">—</div></div>
+<div class="card"><div class="muted">Salas activas / esperando</div><div id="nRooms" class="stat">—</div></div>
+<div class="card"><div class="muted">Cuentas sancionadas</div><div id="nBanned" class="stat">—</div></div>
+</div>
+<nav><button data-tab="players" class="active">Jugadores</button><button data-tab="reports">Reportes</button><button data-tab="rooms">Partidas y salas</button><button data-tab="banned">Bloqueos</button></nav>
+<div id="msg"></div>
+<section id="players" class="card"><div class="row"><h2>👥 Jugadores</h2><button id="refresh">Actualizar</button></div><input id="playerFilter" placeholder="Buscar por nombre o UID"><div id="playerList" class="muted">Cargando…</div></section>
+<section id="reports" class="card hidden"><h2>🚩 Reportes recibidos</h2><p class="muted">Un reporte es una denuncia, no una prueba automática. Revisá la información antes de sancionar.</p><div id="reportList">Cargando…</div></section>
+<section id="rooms" class="card hidden"><h2>🎱 Partidas y salas</h2><div id="roomList">Cargando…</div></section>
+<section id="banned" class="card hidden"><h2>⛔ Cuentas bloqueadas</h2><div id="bannedList">Cargando…</div></section>
+</section>
+</main>
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let db=null,adminUser=null,players=[],reports=[],rooms=[],banned=[];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when=t=>t?new Date(Number(t)).toLocaleString():'—';
+function msg(s){$('msg').textContent=s||''}
+function show(id,on){$(id).classList.toggle('hidden',!on)}
+function money(v){return Number(v||0).toLocaleString('es-PY')}
+async function start(){
+ if(!window.B8_FIREBASE_CONFIG)throw Error('No se encontró firebase-config.js');
+ if(!firebase.apps.length)firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+ db=firebase.firestore();
+ firebase.auth().onAuthStateChanged(async u=>{
+  adminUser=u||null;show('logout',!!u);show('login',!u);show('panel',false);show('denied',false);
+  if(!u)return;
+  try{const a=await db.doc('admins/'+u.uid).get();
+   if(!a.exists){$('uid').value=u.uid;show('denied',true);return;}
+   show('panel',true);await loadAll();
+  }catch(e){$('loginMsg').textContent='No se pudo verificar el permiso: '+e.message;}
+ });
+}
+$('google').onclick=async()=>{try{const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await firebase.auth().signInWithPopup(p);}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión: '+e.message+' (Abrí el panel en Chrome y permití ventanas emergentes).';}};
+$('logout').onclick=()=>firebase.auth().signOut();
+$('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>msg('UID copiado'));else{$('uid').select();document.execCommand('copy');msg('UID copiado');}};
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['players','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
+$('refresh').onclick=loadAll;
+$('playerFilter').oninput=renderPlayers;
+async function loadAll(){
+ msg('Actualizando información…');
+ try{
+  const [ps,rs,ms,bs]=await Promise.all([
+   db.collectionGroup('save').limit(300).get(),
+   db.collection('reports').orderBy('t','desc').limit(200).get(),
+   db.collection('rooms').limit(100).get(),
+   db.collection('banned').limit(200).get()
+  ]);
+  players=ps.docs.map(d=>{let x={};try{x=JSON.parse(d.data().j||'{}')}catch(_){}return {uid:d.ref.parent.id,save:x,t:d.data().t||0};}).sort((a,b)=>b.t-a.t);
+  reports=rs.docs.map(d=>({id:d.id,...d.data()}));
+  rooms=ms.docs.map(d=>({id:d.id,...d.data()})).filter(x=>['wait','play'].includes(x.st0));
+  banned=bs.docs.map(d=>({uid:d.id,...d.data()}));
+  $('nPlayers').textContent=players.length;$('nReports').textContent=reports.length;$('nRooms').textContent=rooms.length;$('nBanned').textContent=banned.length;
+  renderPlayers();renderReports();renderRooms();renderBanned();msg('Información actualizada: '+when(Date.now()));
+ }catch(e){msg('Error al cargar datos: '+e.message+'. Verificá las reglas de Firestore y que este UID esté autorizado.');}
+}
+function renderPlayers(){
+ const q=$('playerFilter').value.trim().toLowerCase();
+ const list=players.filter(p=>(p.save.name||'').toLowerCase().includes(q)||p.uid.toLowerCase().includes(q));
+ $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.save.name||'Jugador')+'</b><span class="pill">'+esc(p.save.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'<br>Correo: '+esc(p.save.accountEmail||'No disponible')+'<br>Monedas: '+money(p.save.coins)+' · Diamantes: '+money(p.save.cash)+'<br>Partidas: '+money(p.save.played)+' · Victorias: '+money(p.save.won)+' · Nivel: '+money(p.save.lvr||1)+'</div><button class="warn" onclick="sanction(\''+esc(p.uid)+'\',\''+esc(p.save.name||'Jugador')+'\')">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">No hay respaldos de jugadores para mostrar. Los invitados que nunca vincularon su cuenta no aparecen aquí.</div>';
+}
+function renderReports(){
+ $('reportList').innerHTML=reports.length?reports.map(r=>'<div class="item"><b>'+esc(r.name||'Jugador reportado')+'</b> · <span class="pill">'+esc(r.motivo||'motivo no indicado')+'</span><div class="muted">UID denunciado: '+esc(r.target)+'<br>Reportó: '+esc(r.by)+' · Sala: '+esc(r.room)+'<br>'+when(r.t)+'</div><button class="warn" onclick="sanction(\''+esc(r.target)+'\',\''+esc(r.name||'Jugador')+'\')">Revisar y sancionar</button></div>').join(''):'<div class="empty">No hay reportes.</div>';
+}
+function renderRooms(){
+ $('roomList').innerHTML=rooms.length?rooms.map(r=>'<div class="item"><b>Sala '+esc(r.id)+'</b> · '+esc(r.st0)+'<div class="muted">Jugador 1: '+esc(r.h?.n||'—')+' ('+esc(r.h?.u||'—')+')<br>Jugador 2: '+esc(r.g?.n||'Esperando')+' ('+esc(r.g?.u||'—')+')</div></div>').join(''):'<div class="empty">No hay salas activas.</div>';
+}
+function renderBanned(){
+ $('bannedList').innerHTML=banned.length?banned.map(b=>'<div class="item"><b>'+esc(b.name||'Cuenta bloqueada')+'</b><div class="muted">UID: '+esc(b.uid)+'<br>Motivo: '+esc(b.reason||'No indicado')+'<br>'+when(b.t)+'</div><button onclick="unban(\''+esc(b.uid)+'\')">Levantar bloqueo</button></div>').join(''):'<div class="empty">No hay cuentas bloqueadas.</div>';
+}
+async function sanction(uid,name){
+ if(!uid||uid===adminUser.uid)return alert('No podés sancionar tu propia cuenta.');
+ const ref=db.doc('moderation/'+uid);
+ const old=await ref.get(),n=Number(old.exists?old.data().warnings||0:0)+1;
+ const action=n>=3?'BLOQUEAR CUENTA':'ENVIAR AVISO '+n;
+ if(!confirm('Jugador: '+name+'\nSiguiente medida: '+action+'\n\nConfirmá solo si revisaste la evidencia.'))return;
+ try{
+  const batch=db.batch(),now=Date.now(),event=db.collection('moderation/'+uid+'/events').doc();
+  batch.set(ref,{uid,name,warnings:n,lastAction:n>=3?'blocked':'warning',reason:'Revisión manual del administrador',updatedAt:now,updatedBy:adminUser.uid},{merge:true});
+  batch.set(event,{level:n,action:n>=3?'blocked':'warning',reason:'Revisión manual del administrador',by:adminUser.uid,t:now});
+  const notification=db.collection('notificaciones/'+uid+'/cola').doc(String(now));
+  batch.set(notification,{titulo:n>=3?'⛔ Cuenta bloqueada':'⚠️ Aviso de moderación',cuerpo:n>=3?'Tu cuenta fue bloqueada por incumplir las reglas de BILLAR 8 PRO. Podés contactar al soporte para solicitar una revisión.':'Recibiste el aviso '+n+' de 3 por una conducta contraria a las reglas. Si vuelve a ocurrir, se aplicará el siguiente nivel de sanción.',tipo:'moderacion',de:'admin',deNombre:'Administración BILLAR 8 PRO',t:now});
+  if(n>=3)batch.set(db.doc('banned/'+uid),{uid,name,reason:'Tres avisos de moderación',t:now,by:adminUser.uid});
+  await batch.commit();alert(n>=3?'Cuenta bloqueada para el acceso online.':'Aviso '+n+' enviado.');await loadAll();
+ }catch(e){alert('No se pudo aplicar la medida: '+e.message);}
+}
+async function unban(uid){
+ if(!confirm('¿Levantar el bloqueo de esta cuenta?'))return;
+ try{await db.doc('banned/'+uid).delete();await db.doc('moderation/'+uid).set({lastAction:'unblocked',updatedAt:Date.now(),updatedBy:adminUser.uid},{merge:true});await loadAll();}
+ catch(e){alert('No se pudo levantar el bloqueo: '+e.message);}
+}
+start().catch(e=>{$('loginMsg').textContent=e.message;});
+</script>
+</body></html>
