@@ -882,9 +882,18 @@ if(((S.v==2 && S.ck!==sig(S,KS0)) || (S.v==3 && S.ck!==sig(S)))){
 }
 S.v = 3;
 
+let CLOUD_SAVE_TIMER = null;
 const save = () => {
   S.ck = sig(S);
   try{ localStorage.setItem('b8', JSON.stringify(S)); }catch(e){}
+  // Sincronización automática solo cuando hay una cuenta permanente.
+  try{
+    const u = window.firebase && firebase.apps.length ? firebase.auth().currentUser : null;
+    if(S.cl && u && !u.isAnonymous){
+      clearTimeout(CLOUD_SAVE_TIMER);
+      CLOUD_SAVE_TIMER = setTimeout(() => cloudAuto(), 1800);
+    }
+  }catch(e){}
 };
 
 /* ============================================================
@@ -5993,8 +6002,13 @@ async function cloud(op){
   }catch(e){ M('<p>No se pudo usar la nube.</p>'); }
 }
 async function cloudAuto(){
-  if(!S.cl) return;
-  try{ const r = await cloudRef(); if(r) await r.set({ j:cloudJSON(), t:Date.now() }); }catch(e){}
+  if(!S.cl || !fbListo() || !firebase.apps.length) return;
+  try{
+    const u=firebase.auth().currentUser;
+    if(!u || u.isAnonymous) return;
+    const r=firebase.firestore().doc('data/users/'+u.uid+'/save');
+    await r.set({j:cloudJSON(),t:Date.now()});
+  }catch(e){ console.warn('No se pudo sincronizar el progreso',e); }
 }
 function sv(){
   save();
@@ -6357,6 +6371,11 @@ function prof(){
         <div class=bx style="display:block;font-size:15px"><b>${c.n}</b>${bars}</div>
         <div class=sec>Logros:</div>
         <div class=bx>${(S.ach || []).length}/${ACH.length} 🏅</div>
+        <div class=sec>☁️ Cuenta y respaldo</div>
+        <div class=bx>
+          <div style="font-size:13px;margin-bottom:8px">${S.cl && firebase.auth && firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous ? '🔒 Cuenta protegida · progreso sincronizado' : '🧑 Invitado · progreso guardado en este dispositivo'}</div>
+          <button class=b1 style="width:100%" onclick="cuentaM()">${S.cl ? '⚙️ Administrar mi cuenta' : '🔐 Crear cuenta / Iniciar sesión'}</button>
+        </div>
       </div>
     </div>`;
   $('modal').style.display = 'block';
@@ -6445,7 +6464,10 @@ function tosM(cont){
     window[n] = function(){ var a = arguments, self = this; if(!S.tos && fbListo()) return tosM(function(){ return f.apply(self, a); }); return f.apply(self, a); };
   });
 })();
-function logout(){ S.login = null; save(); location.reload(); }
+function logout(){
+  try{ if(fbListo() && firebase.apps.length) firebase.auth().signOut(); }catch(e){}
+  S.login = 'guest'; S.cl = 0; save(); location.reload();
+}
 
 /* ============================================================
    LOGIN
@@ -6465,20 +6487,132 @@ function hideLogin(){ $('login').style.display = 'none'; H(); if(PEND.length) M(
 function loginGuest(){ S.login = 'guest'; save(); hideLogin(); }
 function socialM(p){ M(`<h2>Continuar con ${p}</h2><p style="font-size:13px">No disponible en esta versión.</p><input id=lgn maxlength=14 value="${esc(S.name)}" style="width:100%;padding:12px;border-radius:8px;border:0"><p><button class=b1 style="width:100%" onclick="loginSoc('${p}')">Continuar</button></p>`); }
 function loginSoc(p){ const n = ($('lgn').value || '').trim(); if(n.length < 2) return; S.name = n.slice(0, 14); S.login = p; save(); $('modal').style.display = 'none'; hideLogin(); }
-async function loginAcc(){
-  let id = null;
-  try{ const u = await claude.use('user'); id = u && await u.id(); }catch(e){}
-  if(!id) return M('<h2>Iniciar sesión</h2><p>El inicio de sesión online no está disponible en esta versión. Podés jugar como invitado.</p>');
+let CUENTA_UID_LOCAL = null;
+function cuentaMsg(t){ M('<h2>🔐 Mi cuenta BILLAR 8</h2><div class=card>'+t+'</div><button class=b1 style="width:100%" onclick="cuentaM()">Volver</button>'); }
+function cuentaM(){
+  const u = fbListo() && firebase.apps.length ? firebase.auth().currentUser : null;
+  const conectado = !!(u && !u.isAnonymous);
+  M(`<h2>🔐 Mi cuenta BILLAR 8</h2>
+    <div class=card>${conectado ? '✅ Cuenta conectada: <b>'+esc(u.email || '')+'</b>' : 'Creá una cuenta con correo y contraseña para recuperar tus logros en cualquier celular.'}</div>
+    <label style="display:block;margin:8px 0 4px">Correo electrónico</label>
+    <input id="cuentaEmail" type="email" autocomplete="email" placeholder="tu correo" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box">
+    <label style="display:block;margin:8px 0 4px">Contraseña (mínimo 8 caracteres)</label>
+    <input id="cuentaPass" type="password" autocomplete="current-password" placeholder="Tu contraseña" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box">
+    <button class=b1 style="width:100%;margin-top:10px" onclick="cuentaCrear()">🆕 Crear cuenta y guardar mi progreso</button>
+    <button class=b3 style="width:100%;margin-top:7px" onclick="cuentaEntrar()">🔑 Iniciar sesión</button>
+    <button class=b5 style="width:100%;margin-top:7px" onclick="cuentaRecuperar()">📩 Olvidé mi contraseña</button>
+    ${conectado ? '<button class=b6 style="width:100%;margin-top:7px" onclick="logout()">Cerrar sesión</button>' : ''}
+    <p style="font-size:11px;color:#aeb8ce">Tu correo y contraseña sirven para entrar desde otro teléfono. No compartas tu contraseña.</p>`);
+  if(conectado && $('cuentaEmail')) $('cuentaEmail').value=u.email || '';
+}
+function cuentaError(e){
+  const c=e && e.code || '';
+  const m={
+    'auth/email-already-in-use':'Ese correo ya tiene una cuenta. Elegí Iniciar sesión.',
+    'auth/invalid-email':'El correo no parece válido.',
+    'auth/weak-password':'La contraseña debe tener al menos 8 caracteres.',
+    'auth/user-not-found':'No encontramos una cuenta con ese correo.',
+    'auth/wrong-password':'La contraseña es incorrecta.',
+    'auth/invalid-credential':'Correo o contraseña incorrectos.',
+    'auth/network-request-failed':'No hay conexión. Revisá Internet e intentá de nuevo.',
+    'auth/operation-not-allowed':'Falta activar Correo/Contraseña en Firebase Authentication.',
+    'auth/credential-already-in-use':'Ese correo ya pertenece a otra cuenta. Iniciá sesión con ese correo para recuperar su progreso.'
+  };
+  cuentaMsg(m[c] || ('No se pudo completar la operación. '+(e && e.message ? esc(e.message) : '')));
+}
+function cuentaFirebase(){
+  if(!fbListo()) throw new Error('Firebase no está configurado.');
+  if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+  return firebase.auth();
+}
+function progresoLocalReal(){
+  return (S.played||0)>0 || (S.won||0)>0 || (S.xp||0)>0 || (S.tr||0)>0 ||
+    (S.ach||[]).length>0 || (S.owned||[0]).length>1 || (S.coins||1050)!==1050 ||
+    Object.keys(S.stars||{}).length>0;
+}
+function validarGuardadoCloud(o){
+  return !!(o && o.ck && o.ck===sig(o,o.v===3?KS:KS0));
+}
+async function cuentaCrear(){
+  const email=String($('cuentaEmail')&&$('cuentaEmail').value||'').trim().toLowerCase();
+  const pass=String($('cuentaPass')&&$('cuentaPass').value||'');
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return cuentaMsg('Escribí un correo electrónico válido.');
+  if(pass.length<8) return cuentaMsg('La contraseña debe tener al menos 8 caracteres.');
   try{
-    const db = await dbq(), r = db.doc('data/users/' + id + '/save'), sn = await r.get();
-    let msg = 'Sesión iniciada.';
-    if(sn.exists){ const o = JSON.parse(sn.data().j); if(o.ck === sig(o, o.v == 3 ? KS : KS0) && (o.played || 0) > S.played){ Object.assign(S, o); S.v = 3; msg = 'Progreso recuperado ☁️'; } }
-    S.login = 'account'; S.cl = 1; save();
-    await r.set({ j:cloudJSON(), t:Date.now() });
-    M('<h2>✅ ' + msg + '</h2>');
-    hideLogin();
-  }catch(e){ M('<p>Error.</p>'); }
-}/* ============================================================
+    const auth=cuentaFirebase();
+    let user=auth.currentUser;
+    if(user && !user.isAnonymous){
+      if(user.email!==email) return cuentaMsg('Ya hay otra cuenta conectada en este celular. Cerrá esa sesión antes de crear otra.');
+    }else{
+      if(!user){ const cr=await auth.signInAnonymously(); user=cr.user; }
+      const credential=firebase.auth.EmailAuthProvider.credential(email,pass);
+      const linked=await user.linkWithCredential(credential);
+      user=linked.user;
+    }
+    S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||email; save();
+    const db=firebase.firestore(), ref=db.doc('data/users/'+user.uid+'/save');
+    const snap=await ref.get();
+    if(snap.exists){
+      const old=JSON.parse(snap.data().j||'{}');
+      if(!validarGuardadoCloud(old)) return cuentaMsg('La cuenta ya tiene un respaldo, pero no se pudo validar. No lo sobrescribimos para proteger tus logros. Contactá soporte.');
+      return cuentaMsg('Esta cuenta ya tiene progreso guardado. Iniciá sesión para recuperarlo; no vamos a reemplazarlo.');
+    }
+    await ref.set({j:cloudJSON(),t:Date.now()});
+    $('modal').style.display='none'; H();
+    notif('✅ Cuenta creada y progreso respaldado en la nube','green');
+  }catch(e){ cuentaError(e); }
+}
+async function cuentaEntrar(){
+  const email=String($('cuentaEmail')&&$('cuentaEmail').value||'').trim().toLowerCase();
+  const pass=String($('cuentaPass')&&$('cuentaPass').value||'');
+  if(!email||!pass) return cuentaMsg('Escribí tu correo y contraseña.');
+  try{
+    CUENTA_UID_LOCAL=S.uid;
+    const auth=cuentaFirebase();
+    const result=await auth.signInWithEmailAndPassword(email,pass), user=result.user;
+    const db=firebase.firestore(), ref=db.doc('data/users/'+user.uid+'/save'), snap=await ref.get();
+    if(!snap.exists){
+      S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||email; save();
+      await ref.set({j:cloudJSON(),t:Date.now()});
+      $('modal').style.display='none'; H(); notif('Cuenta conectada y progreso guardado','green'); return;
+    }
+    const remote=JSON.parse(snap.data().j||'{}');
+    if(!validarGuardadoCloud(remote)) return cuentaMsg('El respaldo de esta cuenta no pasó la verificación. No modificamos ningún dato.');
+    if(progresoLocalReal() && CUENTA_UID_LOCAL!==user.uid){
+      M(`<h2>☁️ Encontramos tu progreso</h2>
+        <div class=card>Esta cuenta tiene logros guardados en la nube y este celular también tiene progreso local. Para no mezclar ni borrar logros, elegí recuperar el respaldo de la cuenta.</div>
+        <button class=b1 style="width:100%" onclick="cuentaRestaurar()">☁️ Recuperar progreso de mi cuenta</button>
+        <button class=b5 style="width:100%;margin-top:7px" onclick="cuentaCancelar()">Cancelar y conservar este celular</button>`);
+      return;
+    }
+    Object.assign(S,remote); S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||email; S.v=3; save();
+    $('modal').style.display='none'; H(); notif('🎉 ¡Progreso recuperado!','green');
+  }catch(e){ cuentaError(e); }
+}
+async function cuentaRestaurar(){
+  try{
+    const user=firebase.auth().currentUser, db=firebase.firestore();
+    const snap=await db.doc('data/users/'+user.uid+'/save').get();
+    if(!snap.exists) return cuentaMsg('No encontramos un respaldo.');
+    const remote=JSON.parse(snap.data().j||'{}');
+    if(!validarGuardadoCloud(remote)) return cuentaMsg('El respaldo no pasó la verificación. Tus datos locales siguen intactos.');
+    Object.assign(S,remote); S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||''; S.v=3; save();
+    $('modal').style.display='none'; H(); notif('☁️ ¡Todos tus logros recuperados!','green');
+  }catch(e){ cuentaError(e); }
+}
+async function cuentaCancelar(){
+  try{ await firebase.auth().signOut(); }catch(e){}
+  S.uid=CUENTA_UID_LOCAL||S.uid; S.login='guest'; S.cl=0; save();
+  $('modal').style.display='none'; H();
+}
+async function cuentaRecuperar(){
+  const email=String($('cuentaEmail')&&$('cuentaEmail').value||'').trim().toLowerCase();
+  if(!email) return cuentaMsg('Escribí tu correo para enviarte el enlace de recuperación.');
+  try{ await cuentaFirebase().sendPasswordResetEmail(email); cuentaMsg('Te enviamos un correo para crear una contraseña nueva. Revisá también la carpeta de spam.'); }
+  catch(e){ cuentaError(e); }
+}
+async function loginAcc(){ cuentaM(); }
+/* ============================================================
    MENTOR / TRAIL / MIRROR / STREAMER / VOZ / SONIDO NIVEL
    ============================================================ */
 const MENTOR_TIPS = [
@@ -7222,6 +7356,28 @@ function floatTxt(txt, color){
 try{ fit(); }catch(e){ console.error('fit',e); }
 try{ loop(); }catch(e){ console.error('loop',e); }
 try{ if(S && !S.login){ S.login='guest'; save(); } H(); }catch(e){ console.error('boot',e); }
+try{
+  if(fbListo()){
+    if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+    firebase.auth().onAuthStateChanged(async function(user){
+      if(!user || user.isAnonymous) return;
+      try{
+        const db=firebase.firestore(), ref=db.doc('data/users/'+user.uid+'/save'), snap=await ref.get();
+        if(!snap.exists){
+          S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||''; save(); await cloudAuto(); H(); return;
+        }
+        const remote=JSON.parse(snap.data().j||'{}');
+        if(!validarGuardadoCloud(remote)){ notif('No se pudo verificar el respaldo de la cuenta','red'); return; }
+        if(progresoLocalReal() && S.uid!==user.uid){
+          CUENTA_UID_LOCAL=S.uid;
+          M('<h2>☁️ Recuperar tu cuenta</h2><div class=card>Encontramos progreso en este celular y en tu cuenta. Para evitar perder datos, elegí desde tu perfil qué respaldo querés conservar.</div><button class=b1 style="width:100%" onclick="cuentaM()">Revisar cuenta</button>');
+          return;
+        }
+        Object.assign(S,remote); S.uid=user.uid; S.login='account'; S.cl=1; S.accountEmail=user.email||''; S.v=3; save(); H();
+      }catch(e){ console.warn('No se pudo recuperar la cuenta',e); }
+    });
+  }
+}catch(e){ console.warn('Firebase Auth no disponible',e); }
 </script>
 <script>
 /* Funciones online: visibles solo con backend (Firebase configurado). Inicio de sesión/nube manual siempre oculto fuera de Claude. */
