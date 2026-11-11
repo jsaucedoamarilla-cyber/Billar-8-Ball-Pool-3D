@@ -3190,8 +3190,33 @@ function draw(){
       if(typeof agregarPuntoTrail === 'function') agregarPuntoTrail(puntaX, puntaY);
       ctx.lineCap = 'round';
       if(cp.shadow > 0){ ctx.shadowColor = '#ffd700'; ctx.shadowBlur = cp.shadow; }
-      ctx.strokeStyle = cp.cuerpo; ctx.lineWidth = 4;
+      // Cuerpo con acabado brillante y color propio para cada uno de los 21 tacos.
+      const estiloTaco = TACO_STYLES[Math.max(0, Math.min(TACO_STYLES.length - 1, Number(S.cue) || 0))] || TACO_STYLES[0];
+      const gradTaco = ctx.createLinearGradient(sx, sy, sx - ux * 330, sy - uy * 330);
+      gradTaco.addColorStop(0, '#f8f4df');
+      gradTaco.addColorStop(.12, cp.cuerpo);
+      gradTaco.addColorStop(.48, estiloTaco[2]);
+      gradTaco.addColorStop(.82, cp.cuerpo);
+      gradTaco.addColorStop(1, '#292018');
+      ctx.strokeStyle = gradTaco; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - ux * 330, sy - uy * 330); ctx.stroke();
+      // Aros, incrustaciones y emblema visibles también en el taco de la partida.
+      ctx.save();
+      ctx.translate(sx - ux * 190, sy - uy * 190);
+      ctx.rotate(Math.atan2(-uy, -ux));
+      const idTaco = Math.max(0, Math.min(20, Number(S.cue) || 0));
+      const simbolosTaco = ['🐒','🦝','🦔','🦫','🦊','🐺','🦤','🐊','🐃','🐆','🐆','🦅','🪽','🐺','👑','👑','⚡','🐉','🌌','💎','💀'];
+      const colorTaco = estiloTaco[0];
+      ctx.shadowColor = nivel >= 3 ? '#ffd700' : colorTaco;
+      ctx.shadowBlur = nivel >= 4 ? 10 : nivel >= 2 ? 5 : 2;
+      ctx.strokeStyle = colorTaco;
+      ctx.lineWidth = 2;
+      [-54, 54].forEach(dx => { ctx.beginPath(); ctx.ellipse(dx, 0, 3, 7, 0, 0, Math.PI * 2); ctx.stroke(); });
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold ' + (12 + (nivel - 1) * 5) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(simbolosTaco[idTaco] || '✨', 0, 0);
+      ctx.restore();
       ctx.strokeStyle = cp.virola; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(sx - ux * 170, sy - uy * 170); ctx.lineTo(sx - ux * 330, sy - uy * 330); ctx.stroke();
       ctx.strokeStyle = cp.puntera; ctx.lineWidth = 4;
