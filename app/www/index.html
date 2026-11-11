@@ -1870,7 +1870,8 @@ function tacoEmblemaSVG(i, nivel, online=false){
     19: {color:'#49ff9b', dibujo:'<path d="M50 7 L87 31 L74 82 L50 94 L26 82 L13 31Z" fill="#00a85a" stroke="#b8ffd3" stroke-width="5"/><path d="M50 7 L50 94 M13 31 H87 L26 82 M74 82 L50 7" fill="none" stroke="#a7ffd0" stroke-width="4"/>'},
     20: {color:'#eeeeee', dibujo:'<path d="M50 9 C22 9 14 31 20 57 L31 76 H69 L80 57 C86 31 78 9 50 9Z" fill="#e5e5e5" stroke="#fff" stroke-width="5"/><path d="M27 45 L43 40 L44 56 L30 59Z M73 45 L57 40 L56 56 L70 59Z" fill="#171717"/><path d="M50 52 L42 68 H58Z" fill="#777"/><path d="M35 77 V91 M45 77 V91 M55 77 V91 M65 77 V91" stroke="#fff" stroke-width="5"/>'}
   };
-  const e=emblemas[i]; if(!e) return '';
+  const iconosBase = ['🐒','🦝','🦔','🦫','🦊','🐺','🦤','🐊','🐃','🐆','🐆','🦅','🪽','🐺','👑','👑','⚡','🐉','🌌','💎','💀'];
+  const e=emblemas[i] || {color:(TACO_STYLES[i]||TACO_STYLES[0])[0], dibujo:`<text x="50" y="72" text-anchor="middle" font-size="68" font-family="Arial, sans-serif">${iconosBase[i]||'✨'}</text>`};
   const pct=[.05,.08,.12,.18,.25][Math.max(0,Math.min(4,nivel-1))];
   const w=290*pct, h=12+((nivel-1)*1.5), x=193-w/2, y=18-h/2;
   const glow=1.5+nivel*1.8;
@@ -1999,7 +2000,7 @@ function xpBar(i){
   return `<div class="taco-xp-bar"><i style="width:${Math.min(100, pct)}%"></i></div><div class="taco-xp-txt">${info.actual}/${info.necesario} XP</div>`;
 }
 function tacoMiniOnline(info){
-  const i = Math.max(0, Math.min(TACO_STYLES.length - 1, Number(info && info.i) || 0));
+  const i = Math.max(0, Math.min(CUES.length - 1, Number(info && info.i) || 0));
   const nivel = Math.max(1, Math.min(5, Number(info && info.l) || 1));
   const [pun, viro, cuerpo] = TACO_STYLES[i] || TACO_STYLES[0];
   const opacidad = [.15,.25,.38,.52,.72,.95][nivel];
