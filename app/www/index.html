@@ -929,6 +929,22 @@ const CUES = [
 ];
 CUES.forEach(c => { c.pw0 = c.pw; c.aim0 = c.aim; });
 
+// Imágenes de los seis tacos especiales (cargadas desde los recursos locales del juego).
+const TACO_IMAGENES_ESPECIALES = ['yaguarete','dragon-azul','fenix-dorado','galaxia','esmeralda','calavera'].map(nombre => {
+  const img = new Image();
+  img.src = 'tacos/' + nombre + '.webp';
+  return img;
+});
+function tacoEmblemaImagenSVG(i, nivel) {
+  if (i < 15 || i > 20) return '';
+  const pct = [0.05,0.08,0.12,0.18,0.25][Math.max(0,Math.min(4,nivel-1))];
+  const w = 290 * pct, h = 12 + ((nivel-1) * 1.5);
+  const x = 193 - w/2, y = 18 - h/2;
+  const img = ['yaguarete','dragon-azul','fenix-dorado','galaxia','esmeralda','calavera'][i-15];
+  const glow = nivel >= 4 ? (nivel === 5 ? 8 : 4) : 1;
+  return `<image href="tacos/${img}.webp" x="${x}" y="${y}" width="${w}" height="${h}" opacity="${0.55 + nivel*0.09}" preserveAspectRatio="xMidYMid meet" style="filter:drop-shadow(0 0 ${glow}px #ffd700)"/>`;
+}
+
 /* ============================================================
    TACOS EXCLUSIVOS
    ============================================================ */
@@ -1924,6 +1940,7 @@ function tacoSVG(i){
     <rect x="48" y="22" width="290" height="2" fill="#000" opacity=".3"/>
     ${nivelExtra}
     ${tacoEmblemaSVG(i, n)}
+    ${tacoEmblemaImagenSVG(i, n)}
     ${det === 'gold2' ? `<text x="200" y="22" font-size="8" font-family="system-ui" fill="#8b6914" text-anchor="middle" font-weight="900" opacity="${n === 5 ? 0 : 1}">LEGEND</text>` : ''}
     ${det === 'mythic' ? `<text x="200" y="22" font-size="9" font-family="system-ui" fill="#fff" text-anchor="middle" font-weight="900" opacity="${n === 5 ? 0 : 0.9}">⭐ MYTHIC ⭐</text>` : ''}
   </svg>`;
@@ -1996,6 +2013,7 @@ function tacoMiniOnline(info){
     <path d="M90 22 H315" stroke="#000" stroke-width="2" opacity=".28"/>
     ${nivel>=3 ? '<circle cx="145" cy="18" r="2" fill="#fff"/><circle cx="220" cy="18" r="2" fill="#fff"/>' : ''}
     ${tacoEmblemaSVG(i, nivel, true)}
+    ${tacoEmblemaImagenSVG(i, nivel)}
     ${nivel>=4 ? '<path d="M175 10 l5 5 -5 5 -5 -5z" fill="#fff" opacity=".9"/>' : ''}
     ${nivel>=5 ? '<path d="M260 8 l3 6 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1z" fill="#fff"/>' : ''}
   </svg>`;
@@ -3177,6 +3195,19 @@ function draw(){
       ctx.beginPath(); ctx.moveTo(sx - ux * 170, sy - uy * 170); ctx.lineTo(sx - ux * 330, sy - uy * 330); ctx.stroke();
       ctx.strokeStyle = cp.puntera; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - ux * 4, sy - uy * 4); ctx.stroke();
+      // Emblema ilustrado en el taco real: empieza pequeño y crece con cada nivel.
+      const imgTaco = TACO_IMAGENES_ESPECIALES[Number(S.cue) - 15];
+      if (imgTaco && imgTaco.complete && imgTaco.naturalWidth) {
+        const emSize = 8 + (nivel - 1) * 8;
+        ctx.save();
+        ctx.translate(sx - ux * 190, sy - uy * 190);
+        ctx.rotate(Math.atan2(-uy, -ux));
+        ctx.globalAlpha = 0.48 + (nivel - 1) * 0.13;
+        ctx.shadowColor = nivel >= 4 ? '#ffd700' : 'transparent';
+        ctx.shadowBlur = nivel >= 4 ? (nivel === 5 ? 12 : 6) : 0;
+        ctx.drawImage(imgTaco, -emSize/2, -emSize/2, emSize, emSize);
+        ctx.restore();
+      }
       ctx.shadowBlur = 0;
       if(nivel >= 4 && G.ang != null){
         const t = Date.now() / 300;
