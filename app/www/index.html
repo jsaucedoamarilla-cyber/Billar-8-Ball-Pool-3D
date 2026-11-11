@@ -1843,6 +1843,25 @@ function spin(){
   }, 3600);
 }
 
+/* Emblemas ilustrados que crecen con el nivel del taco (5%, 8%, 12%, 18%, 25%). */
+function tacoEmblemaSVG(i, nivel, online=false){
+  const emblemas = {
+    10: {color:'#ffd34d', dibujo:'<path d="M50 12 C25 10 13 31 18 54 L28 78 L40 67 L50 82 L60 67 L72 78 L82 54 C87 31 75 10 50 12Z" fill="#d99a28" stroke="#fff0a6" stroke-width="4"/><path d="M27 39 Q38 25 46 42 M73 39 Q62 25 54 42" fill="none" stroke="#25170b" stroke-width="7" stroke-linecap="round"/><path d="M36 57 Q50 69 64 57 L58 76 L42 76Z" fill="#fff2d0"/><path d="M45 60 L50 64 L55 60" fill="none" stroke="#25170b" stroke-width="3"/><g fill="#25170b"><circle cx="31" cy="23" r="3"/><circle cx="69" cy="23" r="3"/><circle cx="22" cy="48" r="3"/><circle cx="78" cy="48" r="3"/></g>'},
+    15: {color:'#ffd700', dibujo:'<path d="M18 70 L25 27 L43 48 L52 14 L65 48 L82 27 L88 70Z" fill="#ffd700" stroke="#fff4b0" stroke-width="5"/><path d="M24 77 H82" stroke="#fff" stroke-width="7" stroke-linecap="round"/><circle cx="52" cy="54" r="7" fill="#fff4b0"/>'},
+    16: {color:'#00e5ff', dibujo:'<path d="M57 8 L27 53 H47 L39 91 L76 41 H55Z" fill="#b8f8ff" stroke="#00e5ff" stroke-width="5" stroke-linejoin="round"/>'},
+    17: {color:'#ff493c', dibujo:'<path d="M17 68 Q7 38 34 23 L27 9 L49 18 Q71 7 84 29 L96 22 L88 47 Q92 72 65 78 L51 94 L43 76Z" fill="#c92320" stroke="#ffd0a0" stroke-width="4"/><path d="M31 43 Q45 32 56 45 L46 52Z M65 43 Q77 34 82 45 L69 52Z" fill="#ffd700"/><path d="M43 65 Q58 72 73 60" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>'},
+    18: {color:'#d9a4ff', dibujo:'<circle cx="50" cy="50" r="28" fill="#7b2bd1" stroke="#f1d8ff" stroke-width="4"/><path d="M50 13 L59 39 L87 40 L65 57 L73 84 L50 68 L27 84 L35 57 L13 40 L41 39Z" fill="#fff1a8"/><ellipse cx="50" cy="50" rx="46" ry="17" fill="none" stroke="#d9a4ff" stroke-width="5" transform="rotate(-25 50 50)"/>'},
+    19: {color:'#49ff9b', dibujo:'<path d="M50 7 L87 31 L74 82 L50 94 L26 82 L13 31Z" fill="#00a85a" stroke="#b8ffd3" stroke-width="5"/><path d="M50 7 L50 94 M13 31 H87 L26 82 M74 82 L50 7" fill="none" stroke="#a7ffd0" stroke-width="4"/>'},
+    20: {color:'#eeeeee', dibujo:'<path d="M50 9 C22 9 14 31 20 57 L31 76 H69 L80 57 C86 31 78 9 50 9Z" fill="#e5e5e5" stroke="#fff" stroke-width="5"/><path d="M27 45 L43 40 L44 56 L30 59Z M73 45 L57 40 L56 56 L70 59Z" fill="#171717"/><path d="M50 52 L42 68 H58Z" fill="#777"/><path d="M35 77 V91 M45 77 V91 M55 77 V91 M65 77 V91" stroke="#fff" stroke-width="5"/>'}
+  };
+  const e=emblemas[i]; if(!e) return '';
+  const pct=[.05,.08,.12,.18,.25][Math.max(0,Math.min(4,nivel-1))];
+  const w=290*pct, h=12+((nivel-1)*1.5), x=193-w/2, y=18-h/2;
+  const glow=1.5+nivel*1.8;
+  const id='emblemGlow'+i+(online?'on':'off')+nivel;
+  return `<defs><filter id="${id}" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${glow}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g transform="translate(${x} ${y}) scale(${w/100} ${h/100})" opacity="${.72+nivel*.055}" filter="url(#${id})">${e.dibujo}</g>`;
+}
+
 /* ============================================================
    TACOS SVG
    ============================================================ */
@@ -1904,6 +1923,7 @@ function tacoSVG(i){
     <rect x="48" y="12" width="290" height="4" fill="#fff" opacity=".2"/>
     <rect x="48" y="22" width="290" height="2" fill="#000" opacity=".3"/>
     ${nivelExtra}
+    ${tacoEmblemaSVG(i, n)}
     ${det === 'gold2' ? `<text x="200" y="22" font-size="8" font-family="system-ui" fill="#8b6914" text-anchor="middle" font-weight="900" opacity="${n === 5 ? 0 : 1}">LEGEND</text>` : ''}
     ${det === 'mythic' ? `<text x="200" y="22" font-size="9" font-family="system-ui" fill="#fff" text-anchor="middle" font-weight="900" opacity="${n === 5 ? 0 : 0.9}">⭐ MYTHIC ⭐</text>` : ''}
   </svg>`;
@@ -1975,6 +1995,7 @@ function tacoMiniOnline(info){
     <path d="M65 13 H328" stroke="#fff" stroke-width="2" opacity="${opacidad}"/>
     <path d="M90 22 H315" stroke="#000" stroke-width="2" opacity=".28"/>
     ${nivel>=3 ? '<circle cx="145" cy="18" r="2" fill="#fff"/><circle cx="220" cy="18" r="2" fill="#fff"/>' : ''}
+    ${tacoEmblemaSVG(i, nivel, true)}
     ${nivel>=4 ? '<path d="M175 10 l5 5 -5 5 -5 -5z" fill="#fff" opacity=".9"/>' : ''}
     ${nivel>=5 ? '<path d="M260 8 l3 6 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1z" fill="#fff"/>' : ''}
   </svg>`;
