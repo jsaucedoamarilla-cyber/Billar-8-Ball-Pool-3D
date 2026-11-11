@@ -917,7 +917,15 @@ const CUES = [
   {n:'Taco Águila Harpía', pw:1.65, pr:30, c:'cash', aim:1400, leg:1},
   {n:'Taco Tuyuyú', pw:1.7, pr:45, c:'cash', aim:1600, leg:1},
   {n:'Taco Aguará Guazú', pw:1.75, pr:60, c:'cash', aim:1800, leg:1},
-  {n:'⭐ Taco Mítico Ycuamandiyú', pw:1.85, pr:100, c:'cash', aim:2200, leg:1}
+  {n:'⭐ Taco Mítico Ycuamandiyú', pw:1.85, pr:100, c:'cash', aim:2200, leg:1},
+  // Colección de seis diseños especiales añadidos el 10/11/2026.
+  // Misma potencia base para mantenerlos como diseños cosméticos equilibrados.
+  {n:'✨ Élite Dorado', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1},
+  {n:'💠 Cyber Azul', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1},
+  {n:'🐉 Dragón Imperial', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1},
+  {n:'🌌 Galaxia', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1},
+  {n:'💚 Esmeralda', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1},
+  {n:'💀 Calavera Infernal', pw:1.65, pr:45000, c:'coins', aim:1450, leg:1}
 ];
 CUES.forEach(c => { c.pw0 = c.pw; c.aim0 = c.aim; });
 
@@ -1319,7 +1327,15 @@ const TACO_STYLES = [
   ['#8a2b1f','#5a2f12','#3a1a08','ancient'],
   ['#00ff6a','#003a1a','#00aa44','emerald'],
   ['#ff0000','#ff8c00','#8b0000','dragon'],
-  ['#ffd700','#ff00ff','#00e5ff','mythic']
+  ['#ffd700','#ff00ff','#00e5ff','mythic'],
+  // Nuevos diseños: Élite Dorado, Cyber Azul, Dragón Imperial,
+  // Galaxia, Esmeralda y Calavera Infernal.
+  ['#ffd700','#b8860b','#111111','elite'],
+  ['#00e5ff','#164e8a','#071b3a','cyber'],
+  ['#ff3030','#8b0000','#3b0808','dragon'],
+  ['#d8a7ff','#6a1b9a','#17052e','galaxy'],
+  ['#7dff9b','#d4af37','#064b2b','emerald'],
+  ['#eeeeee','#777777','#101010','skull']
 ];
 
 /* ============================================================
@@ -1858,6 +1874,12 @@ function tacoSVG(i){
     extra = `<g opacity=".4"><line x1="120" y1="12" x2="140" y2="24" stroke="#8b6914" stroke-width="1"/><line x1="180" y1="12" x2="200" y2="24" stroke="#8b6914" stroke-width="1"/></g>`;
   } else if(det === 'ebony'){
     extra = `<g opacity=".8"><line x1="150" y1="12" x2="150" y2="24" stroke="#fff" stroke-width=".5"/><line x1="200" y1="12" x2="200" y2="24" stroke="#fff" stroke-width=".5"/></g>`;
+  } else if(det === 'elite'){
+    extra = `<g opacity=".95"><path d="M105 18 l8 -6 8 6 -8 6z M175 18 l8 -6 8 6 -8 6z M245 18 l8 -6 8 6 -8 6z" fill="#ffd700" stroke="#fff" stroke-width=".7"/><path d="M70 13 H320 M70 23 H320" stroke="#ffd700" stroke-width="1"/></g>`;
+  } else if(det === 'cyber'){
+    extra = `<g fill="none" stroke="#00e5ff" stroke-width="1.2"><path d="M90 12 v-5 h22 v5 M145 24 v5 h24 v-5 M205 12 v-5 h22 v5 M265 24 v5 h24 v-5"/><circle cx="120" cy="18" r="2" fill="#fff"/><circle cx="190" cy="18" r="2" fill="#00e5ff"/><circle cx="255" cy="18" r="2" fill="#fff"/></g>`;
+  } else if(det === 'skull'){
+    extra = `<g fill="#eee" stroke="#111" stroke-width=".8"><circle cx="135" cy="18" r="6"/><circle cx="205" cy="18" r="6"/><circle cx="275" cy="18" r="6"/></g><g fill="#111"><circle cx="133" cy="17" r="1.7"/><circle cx="137" cy="17" r="1.7"/><circle cx="203" cy="17" r="1.7"/><circle cx="207" cy="17" r="1.7"/><circle cx="273" cy="17" r="1.7"/><circle cx="277" cy="17" r="1.7"/></g><g stroke="#eee" stroke-width="1"><path d="M130 23 l10 0 M200 23 l10 0 M270 23 l10 0"/></g>`;
   } else if(det === 'gradient' || det === 'mythic'){
     extra = `<defs><linearGradient id="g${i}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff0080"/><stop offset="33%" stop-color="#ffd700"/><stop offset="66%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#ff0080"/></linearGradient></defs>`;
   }
@@ -1908,6 +1930,7 @@ function mezclarColor(c1, c2, p){
 }
 function tacoBadge(i){
   if(i === 14) return '<span class="taco-badge myth">MÍTICO</span>';
+  if(i >= 15 && i <= 20) return '<span class="taco-badge epic">COLECCIÓN PRO</span>';
   if(i >= 11 && i <= 13) return '<span class="taco-badge epic">ÉPICO</span>';
   if(i >= 7 && i <= 10) return '<span class="taco-badge leg">LEGENDARIO</span>';
   return '';
