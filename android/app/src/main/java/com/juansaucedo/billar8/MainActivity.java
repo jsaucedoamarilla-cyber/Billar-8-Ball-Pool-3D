@@ -51,6 +51,19 @@ public class MainActivity extends Activity {
         public void stop() {
             runOnUiThread(() -> stopAimOverlay());
         }
+
+        @JavascriptInterface
+        public void requestAccess(String message) {
+            runOnUiThread(() -> {
+                String safeMessage = message == null ? "" : message;
+                Uri uri = Uri.parse("https://wa.me/595984363598?text=" + Uri.encode(safeMessage));
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "No se pudo abrir WhatsApp. Revisá que esté instalado.", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
     }
 
     private void startAimOverlay(long expiresAt) {
