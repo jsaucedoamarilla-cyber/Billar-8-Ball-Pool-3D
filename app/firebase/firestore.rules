@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
     function notBanned() {
       return signedIn() && !exists(/databases/$(database)/documents/banned/$(request.auth.uid));
     }
@@ -13,8 +14,38 @@ service cloud.firestore {
       return r.h.u == request.auth.uid || (('g' in r) && r.g.u == request.auth.uid);
     }
 
+    // El administrador solo puede consultar su propio registro; no puede autoasignarse permisos.
+    match /admins/{id} {
+      allow get: if signedIn() && request.auth.uid == id;
+      allow list, create, update, delete: if false;
+    }
+
+    // Índice privado de jugadores: cada cuenta escribe únicamente su ficha; solo el administrador puede listar/consultar.
+    match /admin_player_index/{id} {
+      allow get, list: if isAdmin();
+      allow create, update: if owner(id);
+      allow delete: if owner(id);
+    }
+
+    // Autorización individual de puntería. El jugador solo puede leer su propio permiso.
+    // Únicamente el administrador puede crear, modificar o revocar permisos.
+    match /aim_permissions/{id} {
+      allow get: if signedIn() && request.auth.uid == id;
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Control remoto de puntería: lectura del estado global para usuarios autenticados,
+    // y escritura únicamente para cuentas cuyo UID exista en admins/UID.
+    match /aim_control/{id} {
+      allow get: if signedIn() && id == 'global';
+      allow list: if false;
+      allow create, update, delete: if isAdmin() && id == 'global';
+    }
+
     // Lista de baneados: solo se edita desde la consola de Firebase (que ignora las reglas).
-    match /banned/{id} { allow read, write: if false; }
+    // El panel privado necesita consultar y levantar bloqueos; solo admins pueden hacerlo.
+    match /banned/{id} { allow get, list, create, update, delete: if isAdmin(); }
 
     // Reportes de jugadores: solo se crean; se leen desde la consola.
     match /reports/{id} {
@@ -23,7 +54,19 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t'])
         && optStr(request.resource.data, 'motivo', 20)
         && optStr(request.resource.data, 'name', 30);
-      allow read, update, delete: if false;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Registro de moderación y avisos: solo el administrador puede gestionarlos.
+    match /moderation/{uid} {
+      allow read: if isAdmin() || owner(uid);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+      match /events/{eventId} {
+        allow read: if isAdmin() || owner(uid);
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     // Salas de partida

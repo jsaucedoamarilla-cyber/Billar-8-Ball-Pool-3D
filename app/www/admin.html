@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827"><title>Administrador · BILLAR 8 PRO</title>
+<!-- Panel privado: acceso restringido al correo de administración autorizado. Revisión de reglas y flujo de moderación y vista previa Pages. -->
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#eef3ff;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:18px 16px;background:linear-gradient(120deg,#172b45,#111827);border-bottom:1px solid #334155;position:sticky;top:0;z-index:3}
+h1{font-size:21px;margin:0;color:#ffd166}header small{color:#a9b8ce}.wrap{max-width:1100px;margin:auto;padding:16px}
+.card{background:#172235;border:1px solid #30415c;border-radius:14px;padding:14px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.stat{font-size:25px;font-weight:800;color:#ffd166}.muted{color:#a9b8ce;font-size:13px}
+button{border:0;border-radius:10px;padding:11px 14px;background:#365b91;color:white;font-weight:700;cursor:pointer;margin:3px}
+button.warn{background:#b7791f}button.danger{background:#a83232}button.good{background:#23764b}button:disabled{opacity:.45}
+input{width:100%;padding:12px;border-radius:9px;border:1px solid #52647f;background:#0e1727;color:white;margin:6px 0}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}nav button{background:#26364e}nav button.active{background:#b7791f}
+.row{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}.pill{display:inline-block;border-radius:30px;background:#273b56;padding:3px 9px;font-size:12px}
+.item{border-top:1px solid #334155;padding:12px 0}.item:first-child{border:0}.empty{padding:18px;text-align:center;color:#a9b8ce}
+.hidden{display:none!important}#msg{white-space:pre-wrap;color:#ffd166;font-size:13px}
+@media(min-width:700px){.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+</style>
+</head>
+<body>
+<header><div class="row"><div><h1>🎱 BILLAR 8 PRO</h1><small>Panel privado de administración y moderación</small></div><button id="logout" class="hidden">Cerrar sesión</button></div></header>
+<main class="wrap">
+<section id="login" class="card"><h2>Acceso del administrador</h2><p class="muted">Ingresá con la cuenta Google que haya sido autorizada como administradora.</p><button id="google" class="good">Continuar con Google</button><p id="loginMsg" class="muted"></p></section>
+<section id="denied" class="card hidden"><h2>Esta cuenta todavía no es administradora</h2><p>Por seguridad, el panel no concede permisos desde aquí.</p><p class="muted">UID de esta cuenta:</p><input id="uid" readonly><button id="copyUid">Copiar UID</button><p class="muted">El propietario debe autorizar este UID en Firebase Console, creando el documento admins/UID. No compartas contraseñas.</p>
+<p id="verifyError" class="muted"></p></section>
+<section id="panel" class="hidden">
+<div class="grid">
+<div class="card"><div class="muted">Jugadores con respaldo en nube</div><div id="nPlayers" class="stat">—</div></div>
+<div class="card"><div class="muted">Reportes pendientes</div><div id="nReports" class="stat">—</div></div>
+<div class="card"><div class="muted">Salas activas / esperando</div><div id="nRooms" class="stat">—</div></div>
+<div class="card"><div class="muted">Cuentas sancionadas</div><div id="nBanned" class="stat">—</div></div>
+</div>
+<nav><button data-tab="overview" class="active">Resumen</button><button data-tab="players">Jugadores</button><button data-tab="economy">Monedas y diamantes</button><button data-tab="reports">Reportes</button><button data-tab="rooms">Partidas y salas</button><button data-tab="banned">Bloqueos</button></nav>
+<div id="msg"></div><section id="aimControl" class="card"><h2>🎯 Permisos individuales de puntería</h2><p class="muted">Activá las líneas únicamente para el jugador elegido. El permiso vence automáticamente al terminar los días indicados.</p><label for="aimPlayerId">ID / UID del jugador</label><input id="aimPlayerId" placeholder="Pegá el UID del jugador"><label for="aimDays">Duración en días</label><input id="aimDays" type="number" min="1" max="365" step="1" value="3"><div class="row"><button id="aimEnable" class="good">Generar PIN y activar</button><button id="aimDisable" class="danger">Revocar permiso</button></div><label for="aimPinResult">PIN para entregar al jugador</label><div class="row"><input id="aimPinResult" readonly placeholder="El PIN aparecerá aquí"><button id="copyAimPin" type="button">Copiar PIN</button></div><p class="muted">El PIN se muestra una sola vez al generarlo. Guardalo y entregáselo al jugador.</p><p id="aimPlayerStatus" class="muted">Ingresá un ID o elegí un jugador de la lista.</p><p id="aimMsg" class="muted"></p></section>
+<section id="overview" class="card"><h2>📊 Resumen general</h2><div class="grid"><div><div class="muted">Partidas registradas en perfiles</div><div id="nPlayed" class="stat">—</div></div><div><div class="muted">Victorias registradas</div><div id="nWon" class="stat">—</div></div><div><div class="muted">Monedas en perfiles</div><div id="sumCoins" class="stat">—</div></div><div><div class="muted">Diamantes en perfiles</div><div id="sumCash" class="stat">—</div></div></div><p class="muted">Estas cifras se calculan únicamente con las cuentas que aparecen en el índice privado y que sincronizaron su progreso. No representan jugadores invitados ni saldos en tiempo real.</p><h3>Actividad reciente de cuentas</h3><div id="recentPlayers"></div><h3>Estado de salas</h3><div id="roomSummary" class="muted"></div></section>
+<section id="economy" class="card hidden"><h2>🪙 Monedas y diamantes</h2><p class="muted">Vista de solo lectura. No se modifican saldos desde este panel para evitar pérdidas o alteraciones: el juego todavía guarda estas cantidades desde el dispositivo del jugador. Para habilitar ajustes seguros hará falta un servicio del servidor con registro de cada movimiento.</p><div id="economyList"></div></section>
+<section id="players" class="card hidden"><div class="row"><h2>👥 Jugadores</h2><button id="refresh">Actualizar</button></div><input id="playerFilter" placeholder="Buscar por nombre o UID"><div id="playerList" class="muted">Cargando…</div></section>
+<section id="reports" class="card hidden"><h2>🚩 Reportes recibidos</h2><p class="muted">Un reporte es una denuncia, no una prueba automática. Revisá la información antes de sancionar.</p><div id="reportList">Cargando…</div></section>
+<section id="rooms" class="card hidden"><h2>🎱 Partidas y salas</h2><div id="roomList">Cargando…</div></section>
+<section id="banned" class="card hidden"><h2>⛔ Cuentas bloqueadas</h2><div id="bannedList">Cargando…</div></section>
+</section>
+</main>
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let db=null,adminUser=null,players=[],reports=[],rooms=[],banned=[];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when=t=>t?new Date(Number(t)).toLocaleString():'—';
+function msg(s){$('msg').textContent=s||''}
+function show(id,on){$(id).classList.toggle('hidden',!on)}
+function money(v){return Number(v||0).toLocaleString('es-PY')}
+async function start(){
+ if(!window.B8_FIREBASE_CONFIG)throw Error('No se encontró firebase-config.js');
+ if(!firebase.apps.length)firebase.initializeApp(window.B8_FIREBASE_CONFIG);
+ db=firebase.firestore();
+ try{await firebase.auth().getRedirectResult();}catch(e){$('loginMsg').textContent='Google no pudo completar el regreso al panel. Código: '+(e.code||'sin código')+'. Detalle: '+e.message;}
+ firebase.auth().onAuthStateChanged(async u=>{
+  adminUser=u||null;show('logout',!!u);show('login',!u);show('panel',false);show('denied',false);
+  if(!u)return;
+  if((u.email||'').toLowerCase()!=='jsaucedoamarilla@gmail.com'){
+   $('loginMsg').textContent='Esta cuenta Google no está autorizada. Usá jsaucedoamarilla@gmail.com.';
+   await firebase.auth().signOut();return;
+  }
+  try{const a=await db.doc('admins/'+u.uid).get();
+   if(!a.exists){$('uid').value=u.uid;show('denied',true);return;}
+   show('panel',true);watchAim();await loadAll();
+  }catch(e){$('uid').value=u.uid;show('denied',true);$('verifyError').textContent='Google inició sesión, pero Firestore no permitió verificar el permiso: '+e.message+'. Compartí únicamente el UID con el administrador del proyecto; no compartas contraseñas.';}
+ });
+}
+$('google').onclick=async()=>{const b=$('google');try{b.disabled=true;b.textContent='Conectando con Google…';$('loginMsg').textContent='Abriendo el acceso seguro de Google…';const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});try{await firebase.auth().signInWithPopup(p);}catch(e){if(e.code==='auth/popup-blocked'||e.code==='auth/popup-closed-by-user'||e.code==='auth/operation-not-supported-in-this-environment'){ $('loginMsg').textContent='Abriendo Google en otra pantalla…';await firebase.auth().signInWithRedirect(p);return;}throw e;}}catch(e){$('loginMsg').textContent='No se pudo iniciar sesión. Código: '+(e.code||'sin código')+'. Detalle: '+e.message+'. Abrí el enlace directamente en Chrome.';b.disabled=false;b.textContent='Continuar con Google';}};
+$('logout').onclick=()=>firebase.auth().signOut();
+$('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>msg('UID copiado'));else{$('uid').select();document.execCommand('copy');msg('UID copiado');}};
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['overview','players','economy','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
+$('refresh').onclick=loadAll;
+$('playerFilter').oninput=renderPlayers;
+document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b)return;const uid=b.dataset.uid||'',name=b.dataset.name||'Jugador';if(b.dataset.action==='copy-player-uid')copyPlayerUid(uid);if(b.dataset.action==='sanction')sanction(uid,name);if(b.dataset.action==='unban')unban(uid);if(b.dataset.action==='review')markReportReviewed(b.dataset.reportId||'');if(b.dataset.action==='aim-enable'){ $('aimPlayerId').value=uid;updateAimStatus();setPlayerAim(true,uid); }if(b.dataset.action==='aim-revoke'){ $('aimPlayerId').value=uid;updateAimStatus();setPlayerAim(false,uid); }});
+let aimCache={};
+function aimStatusFor(id){const p=aimCache[id];return p&&p.enabled&&Number(p.expiresAt)>Date.now()?p:null;}
+function updateAimStatus(){const id=$('aimPlayerId').value.trim();const p=aimStatusFor(id);$('aimPlayerStatus').textContent=!id?'Ingresá un ID o elegí un jugador de la lista.':p?'🎯 ACTIVADA hasta '+new Date(p.expiresAt).toLocaleString():'Sin permiso activo para este jugador.';}
+async function watchAim(){try{const snap=await db.collection('aim_permissions').limit(500).get();aimCache={};snap.forEach(d=>aimCache[d.id]=d.data());updateAimStatus();renderPlayers();}catch(e){$('aimMsg').textContent='No se pudieron consultar los permisos: '+e.message;}}
+function randomAimPin(){
+ const a=new Uint32Array(1);crypto.getRandomValues(a);
+ return String(10000000+(a[0]%90000000));
+}
+function randomAimSalt(){
+ const a=new Uint8Array(16);crypto.getRandomValues(a);
+ return Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function hashAimPin(pin,salt){
+ const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']);
+ const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode('BILLAR8PRO-AIM:'+salt),iterations:120000,hash:'SHA-256'},key,256);
+ return Array.from(new Uint8Array(bits),x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function setPlayerAim(on,idOverride){
+ if(!adminUser||!db)return;
+ const id=String(idOverride||$('aimPlayerId').value||'').trim();
+ if(!id)return $('aimMsg').textContent='Ingresá el ID / UID del jugador.';
+ if(id.length>128)return $('aimMsg').textContent='El ID no es válido.';
+ const b=on?$('aimEnable'):$('aimDisable');b.disabled=true;$('aimMsg').textContent='Guardando permiso…';
+ try{
+  const now=Date.now(),days=Math.max(1,Math.min(365,Math.floor(Number($('aimDays').value)||1)));
+  const ref=db.doc('aim_permissions/'+id);
+  if(on){
+   if(!crypto||!crypto.subtle)throw new Error('Este navegador no permite generar un PIN seguro. Abrí el panel en Chrome.');
+   const pin=randomAimPin(),pinSalt=randomAimSalt(),pinHash=await hashAimPin(pin,pinSalt),expiresAt=now+days*86400000;
+   const data={uid:id,enabled:true,expiresAt,days,pinHash,pinSalt,pinRequired:true,updatedAt:now,updatedBy:adminUser.uid};
+   await ref.set(data);aimCache[id]=data;$('aimPinResult').value=pin;
+   $('aimMsg').textContent='PIN generado. Entregalo al jugador. Permiso válido por '+days+' día(s), hasta '+new Date(expiresAt).toLocaleString()+'.';
+  }else{
+   const data={uid:id,enabled:false,expiresAt:0,pinHash:'',pinSalt:'',pinRequired:true,updatedAt:now,updatedBy:adminUser.uid};
+   await ref.set(data);aimCache[id]=data;$('aimPinResult').value='';$('aimMsg').textContent='Permiso revocado para '+id+'.';
+  }
+  $('aimPlayerId').value=id;updateAimStatus();renderPlayers();
+ }catch(e){$('aimMsg').textContent='No se pudo guardar: '+e.message;}
+ finally{b.disabled=false;}
+}
+$('copyAimPin').onclick=()=>{const v=$('aimPinResult').value;if(!v)return $('aimMsg').textContent='Primero generá un PIN.';if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>$('aimMsg').textContent='PIN copiado.');else{$('aimPinResult').select();document.execCommand('copy');$('aimMsg').textContent='PIN copiado.';}};
+$('aimPlayerId').oninput=updateAimStatus;
+$('aimEnable').onclick=()=>setPlayerAim(true);
+$('aimDisable').onclick=()=>setPlayerAim(false);
+async function loadAll(){
+ msg('Actualizando información…');
+ try{
+  const [ps,rs,ms,bs]=await Promise.all([
+   db.collection('admin_player_index').orderBy('updatedAt','desc').limit(300).get(),
+   db.collection('reports').orderBy('t','desc').limit(200).get(),
+   db.collection('rooms').limit(100).get(),
+   db.collection('banned').limit(200).get()
+  ]);
+  players=ps.docs.map(d=>({uid:d.id,...d.data()}));
+  reports=rs.docs.map(d=>({id:d.id,...d.data()}));
+  rooms=ms.docs.map(d=>({id:d.id,...d.data()})).filter(x=>['wait','play'].includes(x.st0));
+  banned=bs.docs.map(d=>({uid:d.id,...d.data()}));
+  $('nPlayers').textContent=players.length;$('nReports').textContent=reports.filter(r=>!r.reviewedAt).length;$('nRooms').textContent=rooms.length;$('nBanned').textContent=banned.length;
+  renderPlayers();renderReports();renderRooms();renderBanned();renderOverview();renderEconomy();msg('Información actualizada: '+when(Date.now()));
+ }catch(e){msg('Error al cargar datos: '+e.message+'. Verificá las reglas de Firestore y que este UID esté autorizado.');}
+}
+function renderOverview(){
+ const total=(key)=>players.reduce((a,p)=>a+Math.max(0,Number(p[key])||0),0);
+ $('nPlayed').textContent=money(total('played'));$('nWon').textContent=money(total('won'));
+ $('sumCoins').textContent=money(total('coins'));$('sumCash').textContent=money(total('cash'));
+ const recent=[...players].sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0)).slice(0,8);
+ $('recentPlayers').innerHTML=recent.length?recent.map(p=>'<div class="item"><b>'+esc(p.name||'Jugador')+'</b><div class="muted">'+esc(p.accountEmail||'Cuenta vinculada')+' · Última sincronización: '+when(p.updatedAt)+'</div></div>').join(''):'<div class="empty">Aún no hay cuentas sincronizadas.</div>';
+ const waiting=rooms.filter(r=>r.st0==='wait').length,playing=rooms.filter(r=>r.st0==='play').length;
+ $('roomSummary').textContent='Esperando rival: '+waiting+' · En partida: '+playing+' · Salas consultadas: '+rooms.length;
+}
+function renderEconomy(){
+ const sorted=[...players].sort((a,b)=>(Number(b.coins)||0)+(Number(b.cash)||0)*10000-((Number(a.coins)||0)+(Number(a.cash)||0)*10000));
+ $('economyList').innerHTML=sorted.length?sorted.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">Solo lectura</span></div><div class="muted">UID: '+esc(p.uid)+'<br>🪙 Monedas: '+money(p.coins)+' · 💎 Diamantes: '+money(p.cash)+'<br>Actualizado: '+when(p.updatedAt)+'</div></div>').join(''):'<div class="empty">No hay saldos sincronizados para mostrar.</div>';
+}
+function renderPlayers(){
+ const q=$('playerFilter').value.trim().toLowerCase();
+ const list=players.filter(p=>String(p.name||'Jugador').toLowerCase().includes(q)||p.uid.toLowerCase().includes(q)||String(p.accountEmail||'').toLowerCase().includes(q));
+ $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">'+esc(p.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'</div><button type="button" data-action="copy-player-uid" data-uid="'+esc(p.uid)+'">📋 Copiar ID del jugador</button><div class="muted">Correo: '+esc(p.accountEmail||'No disponible')+'<br>Monedas: '+money(p.coins)+' · Diamantes: '+money(p.cash)+'<br>Partidas: '+money(p.played)+' · Victorias: '+money(p.won)+' · Nivel: '+money(p.lvr||1)+'<br>Última sincronización: '+when(p.updatedAt)+'</div><div class="muted">'+(aimStatusFor(p.uid)?'🎯 Puntería activa hasta '+when(aimStatusFor(p.uid).expiresAt):'🎯 Puntería desactivada')+'</div><button class="good" data-action="aim-enable" data-uid="'+esc(p.uid)+'">Activar puntería</button><button class="danger" data-action="aim-revoke" data-uid="'+esc(p.uid)+'">Revocar puntería</button><button class="warn" data-action="sanction" data-uid="'+esc(p.uid)+'" data-name="'+esc(p.name||'Jugador')+'">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">Todavía no hay jugadores sincronizados en el índice privado. Cada cuenta permanente se agrega al guardar su progreso; pediles que abran el juego con Internet.</div>';
+}
+async function copyPlayerUid(id){
+ if(!id)return;
+ try{
+  if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(id);
+  else{const t=document.createElement('textarea');t.value=id;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();const ok=document.execCommand('copy');t.remove();if(!ok)throw Error('No se pudo copiar');}
+  msg('ID del jugador copiado: '+id);
+ }catch(e){msg('No se pudo copiar automáticamente. Mantené presionado el UID del jugador para copiarlo.');}
+}
+function renderReports(){
+ $('reportList').innerHTML=reports.length?reports.map(r=>'<div class="item"><b>'+esc(r.name||'Jugador reportado')+'</b> · <span class="pill">'+esc(r.motivo||'motivo no indicado')+'</span><div class="muted">UID denunciado: '+esc(r.target)+'<br>Reportó: '+esc(r.by)+' · Sala: '+esc(r.room)+'<br>'+when(r.t)+'</div>'+(r.reviewedAt?'<span class="pill">Revisado · '+when(r.reviewedAt)+'</span>':'<button class="warn" data-action="sanction" data-uid="'+esc(r.target)+'" data-name="'+esc(r.name||'Jugador')+'">Revisar y sancionar</button> <button data-action="review" data-report-id="'+esc(r.id)+'">Marcar revisado</button>')+'</div>').join(''):'<div class="empty">No hay reportes.</div>';
+}
+function renderRooms(){
+ $('roomList').innerHTML=rooms.length?rooms.map(r=>'<div class="item"><b>Sala '+esc(r.id)+'</b> · '+esc(r.st0)+'<div class="muted">Jugador 1: '+esc(r.h?.n||'—')+' ('+esc(r.h?.u||'—')+')<br>Jugador 2: '+esc(r.g?.n||'Esperando')+' ('+esc(r.g?.u||'—')+')</div></div>').join(''):'<div class="empty">No hay salas activas.</div>';
+}
+function renderBanned(){
+ $('bannedList').innerHTML=banned.length?banned.map(b=>'<div class="item"><b>'+esc(b.name||'Cuenta bloqueada')+'</b><div class="muted">UID: '+esc(b.uid)+'<br>Motivo: '+esc(b.reason||'No indicado')+'<br>'+when(b.t)+'</div><button data-action="unban" data-uid="'+esc(b.uid)+'">Levantar bloqueo</button></div>').join(''):'<div class="empty">No hay cuentas bloqueadas.</div>';
+}
+async function markReportReviewed(id){
+ if(!id)return;
+ try{await db.collection('reports').doc(id).update({reviewedAt:Date.now(),reviewedBy:adminUser.uid});await loadAll();}
+ catch(e){alert('No se pudo marcar el reporte: '+e.message);}
+}
+async function sanction(uid,name){
+ if(!uid||uid===adminUser.uid)return alert('No podés sancionar tu propia cuenta.');
+ const ref=db.doc('moderation/'+uid),event=db.collection('moderation/'+uid+'/events').doc();
+ const notification=db.collection('notificaciones/'+uid+'/cola').doc();
+ if(!confirm('Jugador: '+name+'\\nSiguiente medida: aviso 1, aviso 2 o bloqueo al tercer aviso.\\n\\nConfirmá solo si revisaste la evidencia.'))return;
+ try{
+  const now=Date.now();
+  const n=await db.runTransaction(async tx=>{
+   const old=await tx.get(ref),count=Number(old.exists?old.data().warnings||0:0)+1;
+   const blocked=count>=3;
+   tx.set(ref,{uid,name,warnings:count,lastAction:blocked?'blocked':'warning',reason:'Revisión manual del administrador',updatedAt:now,updatedBy:adminUser.uid},{merge:true});
+   tx.set(event,{level:count,action:blocked?'blocked':'warning',reason:'Revisión manual del administrador',by:adminUser.uid,t:now});
+   tx.set(notification,{titulo:blocked?'⛔ Cuenta bloqueada':'⚠️ Aviso de moderación',cuerpo:blocked?'Tu cuenta fue bloqueada para las funciones online por acumular tres sanciones revisadas. Podés contactar al soporte para solicitar una revisión.':'Recibiste el aviso '+count+' de 3 por una conducta contraria a las reglas. Si vuelve a ocurrir, se aplicará el siguiente nivel de sanción.',tipo:'moderacion',de:'admin',deNombre:'Administración BILLAR 8 PRO',t:now});
+   if(blocked)tx.set(db.doc('banned/'+uid),{uid,name,reason:'Tres sanciones revisadas',t:now,by:adminUser.uid});
+   return count;
+  });
+  alert(n>=3?'Cuenta bloqueada para las funciones online.':'Aviso '+n+' enviado.');await loadAll();
+ }catch(e){alert('No se pudo aplicar la medida: '+e.message);}
+}
+async function unban(uid){
+ if(!confirm('¿Levantar el bloqueo de esta cuenta y reiniciar su contador de avisos?'))return;
+ try{
+  const now=Date.now(),ref=db.doc('moderation/'+uid),event=db.collection('moderation/'+uid+'/events').doc(),notification=db.collection('notificaciones/'+uid+'/cola').doc();
+  await db.runTransaction(async tx=>{
+   tx.delete(db.doc('banned/'+uid));
+   tx.set(ref,{warnings:0,lastAction:'unblocked',updatedAt:now,updatedBy:adminUser.uid},{merge:true});
+   tx.set(event,{level:0,action:'unblocked',reason:'Desbloqueo manual por administración',by:adminUser.uid,t:now});
+   tx.set(notification,{titulo:'✅ Cuenta desbloqueada',cuerpo:'La administración levantó el bloqueo de tu cuenta. Podés volver a jugar online respetando las reglas.',tipo:'moderacion',de:'admin',deNombre:'Administración BILLAR 8 PRO',t:now});
+  });
+  await loadAll();
+ }catch(e){alert('No se pudo levantar el bloqueo: '+e.message);}
+}
+start().catch(e=>{$('loginMsg').textContent=e.message;});
+</script>
+</body></html>

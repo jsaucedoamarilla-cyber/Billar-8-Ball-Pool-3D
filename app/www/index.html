@@ -3106,7 +3106,7 @@ function trainerLine(segs,color,width,dash){
   ctx.restore();
 }
 function drawTrainer(){
-  if(!G||!G.cfg||!G.cfg.trainer||!canShoot()||G.ang==null) return;
+  if(!G||!G.cfg||!G.cfg.trainer||!aimIsEnabled()||!canShoot()||G.ang==null) return;
   const c=G.balls[0],ux=Math.cos(G.ang),uy=Math.sin(G.ang);
   const hit=trainerFirstHit(c.x,c.y,ux,uy,null);
   const cuePath=trainerTrace(c.x+ux*R,c.y+uy*R,ux,uy,null,3);
@@ -3841,6 +3841,23 @@ function tut(){ M('<h2>Cómo jugar</h2><div class=card>1. Toca la mesa para apun
    MULTIJUGADOR ONLINE
    ============================================================ */
 let NET = null, NU = null, MPK = '8';
+let AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:false}, AIM_REMOTE_UNSUB=null;
+let AIM_PIN_UNLOCKED=false,AIM_PIN_FAILS=0,AIM_PIN_LOCK_UNTIL=0;
+function aimPermissionActive(){return !!AIM_REMOTE.enabled && Number(AIM_REMOTE.expiresAt)>Date.now() && !!AIM_REMOTE.pinHash && !!AIM_REMOTE.pinSalt;}
+function aimIsEnabled(){return aimPermissionActive() && AIM_PIN_UNLOCKED;}
+function watchAimRemote(db){
+  if(AIM_REMOTE_UNSUB)try{AIM_REMOTE_UNSUB();}catch(e){}
+  const user=window.firebase&&firebase.apps.length?firebase.auth().currentUser:null;
+  if(!user){AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};AIM_PIN_UNLOCKED=false;return;}
+  AIM_REMOTE_UNSUB=db.doc('aim_permissions/'+user.uid).onSnapshot(function(snap){
+    const previousHash=AIM_REMOTE.pinHash;
+    AIM_REMOTE=snap.exists?Object.assign({loaded:true},snap.data()):{enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};
+    if(!aimPermissionActive() || (previousHash && previousHash!==AIM_REMOTE.pinHash)){AIM_PIN_UNLOCKED=false;try{if(window.AndroidAim&&typeof AndroidAim.stop==='function')AndroidAim.stop();}catch(e){}}
+    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció, cambió o fue revocado.','red');}
+  },function(err){AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};AIM_PIN_UNLOCKED=false;console.warn('Permiso individual de puntería no disponible',err);});
+}
+setInterval(function(){if(AIM_REMOTE.enabled && !aimPermissionActive()){AIM_REMOTE.enabled=false;AIM_PIN_UNLOCKED=false;try{if(window.AndroidAim&&typeof AndroidAim.stop==='function')AndroidAim.stop();}catch(e){}if(G&&G.cfg&&G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció.','red');}}},10000);
+
 const NOD = 'Esta función online no está disponible en esta versión del juego.';
 function fbListo(){ return !!(window.firebase && window.B8_FIREBASE_CONFIG && window.B8_FIREBASE_CONFIG.apiKey); }
 let _dbP = null;
@@ -3856,6 +3873,7 @@ function dbq(){
       if(!au.currentUser) await au.signInAnonymously();
       if(au.currentUser && S.uid !== au.currentUser.uid){ S.uid = au.currentUser.uid; save(); }
       NET = firebase.firestore();
+      watchAimRemote(NET);
     }catch(e){ console.warn('online no disponible', e); }
     return NET;
   })();
@@ -6006,9 +6024,18 @@ async function cloudAuto(){
   try{
     const u=firebase.auth().currentUser;
     if(!u || u.isAnonymous) return;
-    const r=firebase.firestore().doc('data/users/'+u.uid+'/save');
-    await r.set({j:cloudJSON(),t:Date.now()});
-  }catch(e){ console.warn('No se pudo sincronizar el progreso',e); }
+    const db=firebase.firestore(), now=Date.now();
+    const r=db.doc('data/users/'+u.uid+'/save');
+    await r.set({j:cloudJSON(),t:now});
+    // Índice mínimo y privado para que el panel pueda listar cuentas sin escanear rutas dinámicas.
+    await db.doc('admin_player_index/'+u.uid).set({
+      uid:u.uid, name:String(S.name||'Jugador').slice(0,30),
+      accountEmail:String(u.email||'').slice(0,120), login:'account',
+      coins:Number(S.coins||0), cash:Number(S.cash||0),
+      played:Number(S.played||0), won:Number(S.won||0),
+      lvr:Number(S.lvr||1), updatedAt:now
+    },{merge:true});
+  }catch(e){ console.warn('No se pudo sincronizar el progreso o el índice privado',e); }
 }
 function sv(){
   save();
@@ -6335,6 +6362,25 @@ async function rankM(){
 }
 function ren(){ M(`<h2>Cambiar nombre</h2><input id=rn maxlength=14 value="${S.name.replace(/"/g, '')}" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box;font-size:18px"><p><button class=b1 style="width:100%" onclick="rn2()">Guardar</button></p>`); }
 function rn2(){ const n = filtrar($('rn').value.trim()); if(n.length < 2) return; S.name = n.slice(0, 14); save(); prof(); }
+async function copyPlayerId(){
+  const id=String(S.uid||'').trim();
+  if(!id) return notif('Todavía no hay un ID de jugador.','red');
+  try{
+    if(window.AndroidAim && typeof AndroidAim.copyText==='function'){
+      AndroidAim.copyText(id);
+      return notif('ID copiado 📋','green');
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(id);
+      return notif('ID copiado 📋','green');
+    }
+    const ta=document.createElement('textarea');ta.value=id;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    const ok=document.execCommand('copy');ta.remove();
+    if(ok) notif('ID copiado 📋','green');
+    else notif('Mantené presionado el ID para copiarlo.','red');
+  }catch(e){notif('No se pudo copiar. Mantené presionado el ID.','red');}
+}
 function delImg(){ S.img = ''; save(); prof(); }
 function pbar(v, m, ic, c){ return `<div class=pb><div style="width:${Math.min(100, v / m * 100)}%;background:${c}"></div><span>${v}/${m}</span><b>${ic}</b></div>`; }
 function prof(){
@@ -6357,7 +6403,7 @@ function prof(){
         <hr>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:20px"><b>${esc(S.name)}</b><button onclick="ren()" style="padding:6px 10px;background:#2a6ad8">✏️</button></div>
         <hr>${FL(S.cc)} <b>${cname(S.cc)}</b><hr>
-        <hr>ID: <b style="color:#ffd23f;font-size:11px">${S.uid}</b>
+        <hr><div style="font-size:12px;color:#aeb8ce">ID DEL JUGADOR</div><b id="playerUidText" style="display:block;color:#ffd23f;font-size:11px;word-break:break-all;margin:5px 0">${S.uid}</b><button class="b3" style="width:100%;margin:5px 0" onclick="copyPlayerId()">📋 Copiar ID del jugador</button>
       </div>
       <div style="flex:1;min-width:280px">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
@@ -6403,7 +6449,7 @@ async function borrarDatos(){
     if(fbListo() && firebase.apps.length){
       const db = await dbq(), id = await uid();
       if(db && id){
-        const rutas = ['elo/' + id, 'spectator_rank/' + id, 'spectator_stats/' + id, 'taco_masters/' + id, 'fr/' + id, 'data/users/' + id + '/save', 'data/users/' + id + '/subs'];
+        const rutas = ['elo/' + id, 'spectator_rank/' + id, 'spectator_stats/' + id, 'taco_masters/' + id, 'fr/' + id, 'data/users/' + id + '/save', 'data/users/' + id + '/subs', 'admin_player_index/' + id];
         for(const r of rutas){ try{ await db.doc(r).delete(); }catch(e){} }
         try{ await firebase.auth().currentUser.delete(); }catch(e){}
       }
@@ -7315,7 +7361,53 @@ function quickStart(){
     <button class=b3 style="width:100%;padding:14px;margin-top:6px" onclick="X();startGame({mode:'nine',variant:'short',quick:1})">9️⃣ 9-Ball exprés</button>`);
 }
 
-function trainAim(){
+async function trainAim(){
+  try{await dbq();}catch(e){}
+  const playerUid=String(await uid()||'');
+  const safeUid=playerUid.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const active=aimPermissionActive();
+  const requestText='Hola, quiero solicitar la habilitación de las líneas de puntería de BILLAR 8 PRO. Mi ID de jugador es: '+(playerUid||'No disponible')+'. ¿Podés habilitarme por favor?';
+  const requestUrl='https://wa.me/595984363598?text='+encodeURIComponent(requestText);
+  M(`<h2>🎯 Activar líneas de puntería</h2>
+    <div class=card>Ingresá el PIN de 8 dígitos que te entregó el administrador. La habilitación dura los días autorizados.</div>
+    <label style="display:block;margin:8px 0 4px;color:#ffd23f">Tu ID de jugador</label>
+    <input id="aimPlayerUid" readonly value="${safeUid}" style="width:100%;padding:11px;font-size:12px;user-select:text">
+    <button class=b5 style="width:100%;margin:5px 0" onclick="copyMyAimUid()">📋 Copiar mi ID</button>
+    <input id="aimPinInput" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN de 8 dígitos" style="width:100%;padding:13px;font-size:20px;letter-spacing:5px;text-align:center">
+    <p id="aimPinMsg" class="muted">${active?'Tu permiso está activo. Ingresá el PIN para encender la línea.':'Todavía no hay una habilitación activa para tu cuenta. Podés solicitarla por WhatsApp.'}</p>
+    <button class=b1 style="width:100%;padding:12px" onclick="verifyAimPin()">🔓 Validar PIN</button>
+    <button class=b2 style="width:100%;padding:12px;margin-top:7px" onclick="requestAimAccess()">💬 Solicitar habilitación por WhatsApp</button>
+    <p class=muted style="font-size:11px;text-align:center">Soporte: 0984 363598</p>`);
+}
+async function copyMyAimUid(){
+  const field=$('aimPlayerUid'),value=String(field?.value||'');
+  if(!value){notif('No se pudo obtener tu ID. Conectate a Internet y probá otra vez.','red');return;}
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);
+    else{field.focus();field.select();if(!document.execCommand('copy'))throw Error('copy failed');}
+    notif('ID de jugador copiado.','green');
+  }catch(e){field.focus();field.select();notif('Mantené presionado el ID para copiarlo.','red');}
+}
+function requestAimAccess(){
+  const playerUid=String($('aimPlayerUid')?.value||'');
+  const message='Hola, quiero solicitar la habilitación de las líneas de puntería de BILLAR 8 PRO. Mi ID de jugador es: '+(playerUid||'No disponible')+'. ¿Podés habilitarme por favor?';
+  try{if(window.AndroidAim&&typeof AndroidAim.requestAccess==='function'){AndroidAim.requestAccess(message);return;}}catch(e){}
+  window.location.href='https://wa.me/595984363598?text='+encodeURIComponent(message);
+}
+async function verifyAimPin(){
+  const field=$('aimPinInput'),msgEl=$('aimPinMsg'),pin=String(field?.value||'').trim();
+  if(!aimPermissionActive()){if(msgEl)msgEl.textContent='Tu cuenta todavía no tiene habilitación. Copiá tu ID y solicitá el acceso por WhatsApp.';return;}
+  if(Date.now()<AIM_PIN_LOCK_UNTIL){if(msgEl)msgEl.textContent='Demasiados intentos. Esperá '+Math.ceil((AIM_PIN_LOCK_UNTIL-Date.now())/1000)+' segundos.';return;}
+  if(!/^\d{8}$/.test(pin)){if(msgEl)msgEl.textContent='Ingresá los 8 números del PIN.';return;}
+  try{
+    const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']);
+    const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode('BILLAR8PRO-AIM:'+AIM_REMOTE.pinSalt),iterations:120000,hash:'SHA-256'},key,256);
+    const hash=Array.from(new Uint8Array(bits),x=>x.toString(16).padStart(2,'0')).join('');
+    if(hash!==AIM_REMOTE.pinHash){AIM_PIN_FAILS++;if(AIM_PIN_FAILS>=5){AIM_PIN_FAILS=0;AIM_PIN_LOCK_UNTIL=Date.now()+120000;}if(msgEl)msgEl.textContent='PIN incorrecto.';field.value='';return;}
+    AIM_PIN_FAILS=0;AIM_PIN_UNLOCKED=true;try{if(window.AndroidAim&&typeof AndroidAim.start==='function')AndroidAim.start(Number(AIM_REMOTE.expiresAt));}catch(e){console.warn('No se pudo iniciar la guía flotante',e);}trainAim();
+  }catch(e){if(msgEl)msgEl.textContent='No se pudo validar el PIN. Revisá tu conexión e intentá de nuevo.';console.warn(e);}
+}
+function showAimExercises(){
   M(`<h2>🎯 Entrenador de puntería</h2>
     <div class=card>Practicá con guías visuales: dirección del tiro, recorrido de la blanca, impactos y rebotes estimados. Elegí un ejercicio.</div>
     <button class=b1 style="width:100%;padding:12px;margin:5px 0" onclick="X();startGame({mode:'practice',trainer:1,trainerDrill:'straight',quick:1})">🎯 Tiro recto y dirección</button>
@@ -7383,6 +7475,30 @@ try{
   if(fbListo()){
     if(!firebase.apps.length) firebase.initializeApp(window.B8_FIREBASE_CONFIG);
     firebase.auth().onAuthStateChanged(async function(user){
+      if(window.B8_MOD_INBOX_UNSUB){ try{window.B8_MOD_INBOX_UNSUB();}catch(e){} window.B8_MOD_INBOX_UNSUB=null; }
+      if(user){
+        try{
+          const modDb=firebase.firestore();
+          modDb.doc('banned/'+user.uid).get().then(function(ban){
+            if(ban.exists){
+              S.moderationBlocked=1;
+              notif('⛔ Tu cuenta está bloqueada para las funciones online. Contactá al soporte para solicitar una revisión.','red');
+              pushLocal('BILLAR 8 PRO · Cuenta bloqueada','Tu cuenta está bloqueada para las funciones online.');
+            }
+          }).catch(function(){});
+          window.B8_MOD_INBOX_UNSUB=modDb.collection('notificaciones/'+user.uid+'/cola').orderBy('t','desc').limit(10).onSnapshot(function(snap){
+            snap.docChanges().forEach(function(change){
+              if(change.type!=='added') return;
+              const item=change.doc.data()||{};
+              if(item.tipo==='moderacion'){
+                notif(item.cuerpo||item.titulo||'Aviso de moderación','red');
+                pushLocal(item.titulo||'Aviso de BILLAR 8 PRO',item.cuerpo||'Tenés una notificación.');
+                change.doc.ref.delete().catch(function(){});
+              }
+            });
+          },function(){});
+        }catch(e){}
+      }
       if(!user || user.isAnonymous) return;
       try{
         const db=firebase.firestore(), ref=db.doc('data/users/'+user.uid+'/save'), snap=await ref.get();
@@ -7615,6 +7731,7 @@ async function trTabla(id){
   }catch(e){notif('No se pudo calcular la tabla','red');}
 }
 
+try{ if(fbListo()) dbq(); }catch(e){ console.warn('No se pudo iniciar el control remoto de puntería',e); }
 </script>
 </body>
 </html>

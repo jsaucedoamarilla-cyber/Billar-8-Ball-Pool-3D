@@ -6,7 +6,7 @@ on:
       - 'android/**'
       - 'app/www/**'
       - '.github/workflows/build-billar8-apk.yml'
-    branches: [ main ]
+    branches: [ main, etapa-9-panel-admin-moderacion ]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,6 +27,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: BILLAR-8-PRO-APK
+          name: BILLAR-8-PRO-APK-PRUEBA
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
