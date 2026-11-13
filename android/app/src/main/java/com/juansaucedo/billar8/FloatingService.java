@@ -132,7 +132,7 @@ public class FloatingService extends Service {
         panel.addView(row(button("Línea −", v -> { lineLength = Math.max(.08f, lineLength - .03f); refresh(); }),
             button("Línea +", v -> { lineLength = Math.min(.85f, lineLength + .03f); refresh(); })));
         panel.addView(row(button("Ocultar línea", v -> { lineVisible = !lineVisible; ((Button)v).setText(lineVisible ? "Ocultar línea" : "Mostrar línea"); refresh(); }),
-            button("Cerrar panel", v -> { panel.setVisibility(View.GONE); })));
+            button("Cerrar guía", v -> stopSelf())));
         TextView help = new TextView(this);
         help.setText("Ajustá manualmente el punto y la dirección sobre la mesa. No detecta bolas automáticamente.");
         help.setTextColor(Color.LTGRAY); help.setTextSize(10); help.setGravity(Gravity.CENTER);
