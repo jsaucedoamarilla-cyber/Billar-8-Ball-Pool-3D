@@ -6362,6 +6362,25 @@ async function rankM(){
 }
 function ren(){ M(`<h2>Cambiar nombre</h2><input id=rn maxlength=14 value="${S.name.replace(/"/g, '')}" style="width:100%;padding:12px;border-radius:8px;border:0;box-sizing:border-box;font-size:18px"><p><button class=b1 style="width:100%" onclick="rn2()">Guardar</button></p>`); }
 function rn2(){ const n = filtrar($('rn').value.trim()); if(n.length < 2) return; S.name = n.slice(0, 14); save(); prof(); }
+async function copyPlayerId(){
+  const id=String(S.uid||'').trim();
+  if(!id) return notif('Todavía no hay un ID de jugador.','red');
+  try{
+    if(window.AndroidAim && typeof AndroidAim.copyText==='function'){
+      AndroidAim.copyText(id);
+      return notif('ID copiado 📋','green');
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(id);
+      return notif('ID copiado 📋','green');
+    }
+    const ta=document.createElement('textarea');ta.value=id;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    const ok=document.execCommand('copy');ta.remove();
+    if(ok) notif('ID copiado 📋','green');
+    else notif('Mantené presionado el ID para copiarlo.','red');
+  }catch(e){notif('No se pudo copiar. Mantené presionado el ID.','red');}
+}
 function delImg(){ S.img = ''; save(); prof(); }
 function pbar(v, m, ic, c){ return `<div class=pb><div style="width:${Math.min(100, v / m * 100)}%;background:${c}"></div><span>${v}/${m}</span><b>${ic}</b></div>`; }
 function prof(){
@@ -6384,7 +6403,7 @@ function prof(){
         <hr>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:20px"><b>${esc(S.name)}</b><button onclick="ren()" style="padding:6px 10px;background:#2a6ad8">✏️</button></div>
         <hr>${FL(S.cc)} <b>${cname(S.cc)}</b><hr>
-        <hr>ID: <b style="color:#ffd23f;font-size:11px">${S.uid}</b>
+        <hr><div style="font-size:12px;color:#aeb8ce">ID DEL JUGADOR</div><b id="playerUidText" style="display:block;color:#ffd23f;font-size:11px;word-break:break-all;margin:5px 0">${S.uid}</b><button class="b3" style="width:100%;margin:5px 0" onclick="copyPlayerId()">📋 Copiar ID del jugador</button>
       </div>
       <div style="flex:1;min-width:280px">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
