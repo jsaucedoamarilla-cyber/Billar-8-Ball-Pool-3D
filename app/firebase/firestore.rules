@@ -44,7 +44,8 @@ service cloud.firestore {
     }
 
     // Lista de baneados: solo se edita desde la consola de Firebase (que ignora las reglas).
-    match /banned/{id} { allow read, write: if false; }
+    // El panel privado necesita consultar y levantar bloqueos; solo admins pueden hacerlo.
+    match /banned/{id} { allow get, list, create, update, delete: if isAdmin(); }
 
     // Reportes de jugadores: solo se crean; se leen desde la consola.
     match /reports/{id} {
@@ -53,7 +54,19 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['by','target','name','room','motivo','t'])
         && optStr(request.resource.data, 'motivo', 20)
         && optStr(request.resource.data, 'name', 30);
-      allow read, update, delete: if false;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Registro de moderación y avisos: solo el administrador puede gestionarlos.
+    match /moderation/{uid} {
+      allow read: if isAdmin() || owner(uid);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+      match /events/{eventId} {
+        allow read: if isAdmin() || owner(uid);
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     // Salas de partida
