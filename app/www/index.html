@@ -3106,7 +3106,7 @@ function trainerLine(segs,color,width,dash){
   ctx.restore();
 }
 function drawTrainer(){
-  if(!G||!G.cfg||!G.cfg.trainer||!canShoot()||G.ang==null) return;
+  if(!G||!G.cfg||!G.cfg.trainer||!aimIsEnabled()||!canShoot()||G.ang==null) return;
   const c=G.balls[0],ux=Math.cos(G.ang),uy=Math.sin(G.ang);
   const hit=trainerFirstHit(c.x,c.y,ux,uy,null);
   const cuePath=trainerTrace(c.x+ux*R,c.y+uy*R,ux,uy,null,3);
@@ -3841,6 +3841,17 @@ function tut(){ M('<h2>Cómo jugar</h2><div class=card>1. Toca la mesa para apun
    MULTIJUGADOR ONLINE
    ============================================================ */
 let NET = null, NU = null, MPK = '8';
+let AIM_REMOTE={enabled:false,expiresAt:0,loaded:false}, AIM_REMOTE_UNSUB=null;
+function aimIsEnabled(){return !!AIM_REMOTE.enabled && Number(AIM_REMOTE.expiresAt)>Date.now();}
+function watchAimRemote(db){
+  if(AIM_REMOTE_UNSUB)try{AIM_REMOTE_UNSUB();}catch(e){}
+  AIM_REMOTE_UNSUB=db.doc('aim_control/global').onSnapshot(function(snap){
+    AIM_REMOTE=snap.exists?Object.assign({loaded:true},snap.data()):{enabled:false,expiresAt:0,loaded:true};
+    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 La autorización de puntería venció o fue desactivada.','red');}
+  },function(err){AIM_REMOTE={enabled:false,expiresAt:0,loaded:true};console.warn('Control remoto de puntería no disponible',err);});
+}
+setInterval(function(){if(AIM_REMOTE.enabled && !aimIsEnabled()){AIM_REMOTE.enabled=false;if(G&&G.cfg&&G.cfg.trainer){G.cfg.trainer=0;notif('🎯 El permiso de puntería venció.','red');}}},10000);
+
 const NOD = 'Esta función online no está disponible en esta versión del juego.';
 function fbListo(){ return !!(window.firebase && window.B8_FIREBASE_CONFIG && window.B8_FIREBASE_CONFIG.apiKey); }
 let _dbP = null;
@@ -3856,6 +3867,7 @@ function dbq(){
       if(!au.currentUser) await au.signInAnonymously();
       if(au.currentUser && S.uid !== au.currentUser.uid){ S.uid = au.currentUser.uid; save(); }
       NET = firebase.firestore();
+      watchAimRemote(NET);
     }catch(e){ console.warn('online no disponible', e); }
     return NET;
   })();
@@ -7325,6 +7337,7 @@ function quickStart(){
 }
 
 function trainAim(){
+  if(!aimIsEnabled()) return notif('🎯 La puntería está deshabilitada por administración.','red');
   M(`<h2>🎯 Entrenador de puntería</h2>
     <div class=card>Practicá con guías visuales: dirección del tiro, recorrido de la blanca, impactos y rebotes estimados. Elegí un ejercicio.</div>
     <button class=b1 style="width:100%;padding:12px;margin:5px 0" onclick="X();startGame({mode:'practice',trainer:1,trainerDrill:'straight',quick:1})">🎯 Tiro recto y dirección</button>
