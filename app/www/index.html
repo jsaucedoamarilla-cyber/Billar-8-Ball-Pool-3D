@@ -3842,7 +3842,7 @@ function tut(){ M('<h2>Cómo jugar</h2><div class=card>1. Toca la mesa para apun
    ============================================================ */
 let NET = null, NU = null, MPK = '8';
 let AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:false}, AIM_REMOTE_UNSUB=null;
-let AIM_PIN_UNLOCKED=false;
+let AIM_PIN_UNLOCKED=false,AIM_PIN_FAILS=0,AIM_PIN_LOCK_UNTIL=0;
 function aimPermissionActive(){return !!AIM_REMOTE.enabled && Number(AIM_REMOTE.expiresAt)>Date.now() && !!AIM_REMOTE.pinHash && !!AIM_REMOTE.pinSalt;}
 function aimIsEnabled(){return aimPermissionActive() && AIM_PIN_UNLOCKED;}
 function watchAimRemote(db){
@@ -3850,9 +3850,10 @@ function watchAimRemote(db){
   const user=window.firebase&&firebase.apps.length?firebase.auth().currentUser:null;
   if(!user){AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};AIM_PIN_UNLOCKED=false;return;}
   AIM_REMOTE_UNSUB=db.doc('aim_permissions/'+user.uid).onSnapshot(function(snap){
+    const previousHash=AIM_REMOTE.pinHash;
     AIM_REMOTE=snap.exists?Object.assign({loaded:true},snap.data()):{enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};
-    if(!aimPermissionActive())AIM_PIN_UNLOCKED=false;
-    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció o fue revocado.','red');}
+    if(!aimPermissionActive() || (previousHash && previousHash!==AIM_REMOTE.pinHash))AIM_PIN_UNLOCKED=false;
+    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció, cambió o fue revocado.','red');}
   },function(err){AIM_REMOTE={enabled:false,expiresAt:0,pinHash:'',pinSalt:'',loaded:true};AIM_PIN_UNLOCKED=false;console.warn('Permiso individual de puntería no disponible',err);});
 }
 setInterval(function(){if(AIM_REMOTE.enabled && !aimPermissionActive()){AIM_REMOTE.enabled=false;AIM_PIN_UNLOCKED=false;if(G&&G.cfg&&G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció.','red');}}},10000);
@@ -7355,13 +7356,14 @@ function trainAim(){
 }
 async function verifyAimPin(){
   const field=$('aimPinInput'),msgEl=$('aimPinMsg'),pin=String(field?.value||'').trim();
+  if(Date.now()<AIM_PIN_LOCK_UNTIL){if(msgEl)msgEl.textContent='Demasiados intentos. Esperá '+Math.ceil((AIM_PIN_LOCK_UNTIL-Date.now())/1000)+' segundos.';return;}
   if(!/^\\d{8}$/.test(pin)){if(msgEl)msgEl.textContent='Ingresá los 8 números del PIN.';return;}
   try{
     const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']);
     const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode('BILLAR8PRO-AIM:'+AIM_REMOTE.pinSalt),iterations:120000,hash:'SHA-256'},key,256);
     const hash=Array.from(new Uint8Array(bits),x=>x.toString(16).padStart(2,'0')).join('');
-    if(hash!==AIM_REMOTE.pinHash){if(msgEl)msgEl.textContent='PIN incorrecto.';field.value='';return;}
-    AIM_PIN_UNLOCKED=true;trainAim();
+    if(hash!==AIM_REMOTE.pinHash){AIM_PIN_FAILS++;if(AIM_PIN_FAILS>=5){AIM_PIN_FAILS=0;AIM_PIN_LOCK_UNTIL=Date.now()+120000;}if(msgEl)msgEl.textContent='PIN incorrecto.';field.value='';return;}
+    AIM_PIN_FAILS=0;AIM_PIN_UNLOCKED=true;trainAim();
   }catch(e){if(msgEl)msgEl.textContent='No se pudo validar el PIN. Revisá tu conexión e intentá de nuevo.';console.warn(e);}
 }
 function showAimExercises(){
