@@ -1,16 +1,24 @@
 package com.juansaucedo.billar8;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
+    private static final int REQUEST_OVERLAY = 4812;
     private WebView web;
+    private long pendingOverlayExpiry = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,10 +34,63 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        web.addJavascriptInterface(new AimBridge(), "AndroidAim");
         web.setWebViewClient(new WebViewClient());
         web.setWebChromeClient(new WebChromeClient());
         web.loadUrl("file:///android_asset/index.html");
         hideSystemBars();
+    }
+
+    private class AimBridge {
+        @JavascriptInterface
+        public void start(long expiresAt) {
+            runOnUiThread(() -> startAimOverlay(expiresAt));
+        }
+
+        @JavascriptInterface
+        public void stop() {
+            runOnUiThread(() -> stopAimOverlay());
+        }
+    }
+
+    private void startAimOverlay(long expiresAt) {
+        if (expiresAt <= System.currentTimeMillis()) {
+            Toast.makeText(this, "El permiso de líneas ya venció.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            pendingOverlayExpiry = expiresAt;
+            Toast.makeText(this, "Autorizá BILLAR 8 PRO para mostrar el botón flotante.", Toast.LENGTH_LONG).show();
+            Intent permission = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName()));
+            startActivityForResult(permission, REQUEST_OVERLAY);
+            return;
+        }
+        Intent service = new Intent(this, FloatingService.class);
+        service.putExtra("expires_at", expiresAt);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
+        else startService(service);
+        Toast.makeText(this, "Botón flotante activado.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void stopAimOverlay() {
+        pendingOverlayExpiry = 0;
+        stopService(new Intent(this, FloatingService.class));
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_OVERLAY) {
+            if (Settings.canDrawOverlays(this) && pendingOverlayExpiry > System.currentTimeMillis()) {
+                long expiry = pendingOverlayExpiry;
+                pendingOverlayExpiry = 0;
+                startAimOverlay(expiry);
+            } else {
+                pendingOverlayExpiry = 0;
+                Toast.makeText(this, "Sin permiso de superposición no puede aparecer el botón flotante.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void hideSystemBars() {
