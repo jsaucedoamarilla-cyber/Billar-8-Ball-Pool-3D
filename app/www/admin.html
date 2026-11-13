@@ -34,7 +34,7 @@ nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}nav button{background:#263
 <div class="card"><div class="muted">Cuentas sancionadas</div><div id="nBanned" class="stat">—</div></div>
 </div>
 <nav><button data-tab="overview" class="active">Resumen</button><button data-tab="players">Jugadores</button><button data-tab="economy">Monedas y diamantes</button><button data-tab="reports">Reportes</button><button data-tab="rooms">Partidas y salas</button><button data-tab="banned">Bloqueos</button></nav>
-<div id="msg"></div><section id="aimControl" class="card"><h2>🎯 Control de puntería</h2><p class="muted">Habilitá las guías de puntería para todos los jugadores durante un plazo. El acceso vence automáticamente.</p><div class="row"><b>Estado actual</b><span id="aimStatus" class="pill">Consultando…</span></div><p id="aimUntil" class="muted">—</p><label for="aimDuration">Duración</label><select id="aimDuration" style="width:100%;padding:12px;border-radius:9px;background:#0e1727;color:white;border:1px solid #52647f"><option value="1">1 hora</option><option value="2">2 horas</option><option value="6">6 horas</option><option value="12">12 horas</option><option value="24">1 día</option><option value="72">3 días</option><option value="168">7 días</option><option value="720">30 días</option></select><button id="aimEnable" class="good">Activar por el plazo elegido</button><button id="aimDisable" class="danger">Desactivar ahora</button><p id="aimMsg" class="muted"></p></section>
+<div id="msg"></div><section id="aimControl" class="card"><h2>🎯 Permisos individuales de puntería</h2><p class="muted">Activá las líneas únicamente para el jugador elegido. El permiso vence automáticamente al terminar los días indicados.</p><label for="aimPlayerId">ID / UID del jugador</label><input id="aimPlayerId" placeholder="Pegá el UID del jugador"><label for="aimDays">Duración en días</label><input id="aimDays" type="number" min="1" max="365" step="1" value="3"><div class="row"><button id="aimEnable" class="good">Activar para este jugador</button><button id="aimDisable" class="danger">Revocar permiso</button></div><p id="aimPlayerStatus" class="muted">Ingresá un ID o elegí un jugador de la lista.</p><p id="aimMsg" class="muted"></p></section>
 <section id="overview" class="card"><h2>📊 Resumen general</h2><div class="grid"><div><div class="muted">Partidas registradas en perfiles</div><div id="nPlayed" class="stat">—</div></div><div><div class="muted">Victorias registradas</div><div id="nWon" class="stat">—</div></div><div><div class="muted">Monedas en perfiles</div><div id="sumCoins" class="stat">—</div></div><div><div class="muted">Diamantes en perfiles</div><div id="sumCash" class="stat">—</div></div></div><p class="muted">Estas cifras se calculan únicamente con las cuentas que aparecen en el índice privado y que sincronizaron su progreso. No representan jugadores invitados ni saldos en tiempo real.</p><h3>Actividad reciente de cuentas</h3><div id="recentPlayers"></div><h3>Estado de salas</h3><div id="roomSummary" class="muted"></div></section>
 <section id="economy" class="card hidden"><h2>🪙 Monedas y diamantes</h2><p class="muted">Vista de solo lectura. No se modifican saldos desde este panel para evitar pérdidas o alteraciones: el juego todavía guarda estas cantidades desde el dispositivo del jugador. Para habilitar ajustes seguros hará falta un servicio del servidor con registro de cada movimiento.</p><div id="economyList"></div></section>
 <section id="players" class="card hidden"><div class="row"><h2>👥 Jugadores</h2><button id="refresh">Actualizar</button></div><input id="playerFilter" placeholder="Buscar por nombre o UID"><div id="playerList" class="muted">Cargando…</div></section>
@@ -80,34 +80,29 @@ $('copyUid').onclick=()=>{const v=$('uid').value;if(navigator.clipboard?.writeTe
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));['overview','players','economy','reports','rooms','banned'].forEach(id=>show(id,id===b.dataset.tab));});
 $('refresh').onclick=loadAll;
 $('playerFilter').oninput=renderPlayers;
-document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b)return;const uid=b.dataset.uid||'',name=b.dataset.name||'Jugador';if(b.dataset.action==='sanction')sanction(uid,name);if(b.dataset.action==='unban')unban(uid);if(b.dataset.action==='review')markReportReviewed(b.dataset.reportId||'');});
-let aimUnsub=null,aimState={enabled:false,expiresAt:0};
-function renderAim(){
- const active=!!aimState.enabled && Number(aimState.expiresAt)>Date.now();
- $('aimStatus').textContent=active?'ACTIVADA':'DESACTIVADA';
- $('aimStatus').style.background=active?'#17633b':'#5a2c35';
- $('aimUntil').textContent=active?'Vence: '+new Date(aimState.expiresAt).toLocaleString():'La puntería está apagada o el plazo ya venció.';
-}
-function watchAim(){
- if(aimUnsub)aimUnsub();
- aimUnsub=db.doc('aim_control/global').onSnapshot(s=>{
-  aimState=s.exists?s.data():{enabled:false,expiresAt:0};renderAim();
- },e=>{$('aimMsg').textContent='No se pudo leer el control: '+e.message;});
-}
-async function setAimControl(on){
- if(!adminUser || !db)return;
- const b=$('aimEnable');b.disabled=true;$('aimMsg').textContent='Guardando…';
+document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b)return;const uid=b.dataset.uid||'',name=b.dataset.name||'Jugador';if(b.dataset.action==='sanction')sanction(uid,name);if(b.dataset.action==='unban')unban(uid);if(b.dataset.action==='review')markReportReviewed(b.dataset.reportId||'');if(b.dataset.action==='aim-enable'){ $('aimPlayerId').value=uid;updateAimStatus();setPlayerAim(true,uid); }if(b.dataset.action==='aim-revoke'){ $('aimPlayerId').value=uid;updateAimStatus();setPlayerAim(false,uid); }});
+let aimCache={};
+function aimStatusFor(id){const p=aimCache[id];return p&&p.enabled&&Number(p.expiresAt)>Date.now()?p:null;}
+function updateAimStatus(){const id=$('aimPlayerId').value.trim();const p=aimStatusFor(id);$('aimPlayerStatus').textContent=!id?'Ingresá un ID o elegí un jugador de la lista.':p?'🎯 ACTIVADA hasta '+new Date(p.expiresAt).toLocaleString():'Sin permiso activo para este jugador.';}
+async function watchAim(){try{const snap=await db.collection('aim_permissions').limit(500).get();aimCache={};snap.forEach(d=>aimCache[d.id]=d.data());updateAimStatus();renderPlayers();}catch(e){$('aimMsg').textContent='No se pudieron consultar los permisos: '+e.message;}}
+async function setPlayerAim(on,idOverride){
+ if(!adminUser||!db)return;
+ const id=String(idOverride||$('aimPlayerId').value||'').trim();
+ if(!id)return $('aimMsg').textContent='Ingresá el ID / UID del jugador.';
+ if(id.length>128)return $('aimMsg').textContent='El ID no es válido.';
+ const b=on?$('aimEnable'):$('aimDisable');b.disabled=true;$('aimMsg').textContent='Guardando permiso…';
  try{
-  const now=Date.now(),hours=Number($('aimDuration').value)||1;
-  const expiresAt=on?now+hours*60*60*1000:0;
-  await db.doc('aim_control/global').set({enabled:!!on,expiresAt:expiresAt,updatedAt:now,updatedBy:adminUser.uid},{merge:false});
-  $('aimMsg').textContent=on?'Puntería habilitada hasta '+new Date(expiresAt).toLocaleString():'Puntería desactivada.';
+  const now=Date.now(),days=Math.max(1,Math.min(365,Math.floor(Number($('aimDays').value)||1)));
+  const ref=db.doc('aim_permissions/'+id);
+  if(on){const expiresAt=now+days*86400000;const data={uid:id,enabled:true,expiresAt,days,updatedAt:now,updatedBy:adminUser.uid};await ref.set(data);aimCache[id]=data;$('aimMsg').textContent='Puntería activada para '+id+' durante '+days+' día(s). Vence: '+new Date(expiresAt).toLocaleString();}
+  else{await ref.set({uid:id,enabled:false,expiresAt:0,updatedAt:now,updatedBy:adminUser.uid});aimCache[id]={enabled:false,expiresAt:0};$('aimMsg').textContent='Permiso revocado para '+id+'.';}
+  $('aimPlayerId').value=id;updateAimStatus();renderPlayers();
  }catch(e){$('aimMsg').textContent='No se pudo guardar: '+e.message;}
  finally{b.disabled=false;}
 }
-$('aimEnable').onclick=()=>setAimControl(true);
-$('aimDisable').onclick=()=>setAimControl(false);
-setInterval(renderAim,15000);
+$('aimPlayerId').oninput=updateAimStatus;
+$('aimEnable').onclick=()=>setPlayerAim(true);
+$('aimDisable').onclick=()=>setPlayerAim(false);
 async function loadAll(){
  msg('Actualizando información…');
  try{
@@ -141,7 +136,7 @@ function renderEconomy(){
 function renderPlayers(){
  const q=$('playerFilter').value.trim().toLowerCase();
  const list=players.filter(p=>String(p.name||'Jugador').toLowerCase().includes(q)||p.uid.toLowerCase().includes(q)||String(p.accountEmail||'').toLowerCase().includes(q));
- $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">'+esc(p.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'<br>Correo: '+esc(p.accountEmail||'No disponible')+'<br>Monedas: '+money(p.coins)+' · Diamantes: '+money(p.cash)+'<br>Partidas: '+money(p.played)+' · Victorias: '+money(p.won)+' · Nivel: '+money(p.lvr||1)+'<br>Última sincronización: '+when(p.updatedAt)+'</div><button class="warn" data-action="sanction" data-uid="'+esc(p.uid)+'" data-name="'+esc(p.name||'Jugador')+'">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">Todavía no hay jugadores sincronizados en el índice privado. Cada cuenta permanente se agrega al guardar su progreso; pediles que abran el juego con Internet.</div>';
+ $('playerList').innerHTML=list.length?list.map(p=>'<div class="item"><div class="row"><b>'+esc(p.name||'Jugador')+'</b><span class="pill">'+esc(p.login||'cuenta')+'</span></div><div class="muted">UID: '+esc(p.uid)+'<br>Correo: '+esc(p.accountEmail||'No disponible')+'<br>Monedas: '+money(p.coins)+' · Diamantes: '+money(p.cash)+'<br>Partidas: '+money(p.played)+' · Victorias: '+money(p.won)+' · Nivel: '+money(p.lvr||1)+'<br>Última sincronización: '+when(p.updatedAt)+'</div><div class="muted">'+(aimStatusFor(p.uid)?'🎯 Puntería activa hasta '+when(aimStatusFor(p.uid).expiresAt):'🎯 Puntería desactivada')+'</div><button class="good" data-action="aim-enable" data-uid="'+esc(p.uid)+'">Activar puntería</button><button class="danger" data-action="aim-revoke" data-uid="'+esc(p.uid)+'">Revocar puntería</button><button class="warn" data-action="sanction" data-uid="'+esc(p.uid)+'" data-name="'+esc(p.name||'Jugador')+'">Enviar siguiente aviso / bloqueo</button></div>').join(''):'<div class="empty">Todavía no hay jugadores sincronizados en el índice privado. Cada cuenta permanente se agrega al guardar su progreso; pediles que abran el juego con Internet.</div>';
 }
 function renderReports(){
  $('reportList').innerHTML=reports.length?reports.map(r=>'<div class="item"><b>'+esc(r.name||'Jugador reportado')+'</b> · <span class="pill">'+esc(r.motivo||'motivo no indicado')+'</span><div class="muted">UID denunciado: '+esc(r.target)+'<br>Reportó: '+esc(r.by)+' · Sala: '+esc(r.room)+'<br>'+when(r.t)+'</div>'+(r.reviewedAt?'<span class="pill">Revisado · '+when(r.reviewedAt)+'</span>':'<button class="warn" data-action="sanction" data-uid="'+esc(r.target)+'" data-name="'+esc(r.name||'Jugador')+'">Revisar y sancionar</button> <button data-action="review" data-report-id="'+esc(r.id)+'">Marcar revisado</button>')+'</div>').join(''):'<div class="empty">No hay reportes.</div>';
