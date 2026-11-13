@@ -7344,6 +7344,7 @@ function quickStart(){
 
 function trainAim(){
   if(!aimPermissionActive()) return notif('🎯 No tenés un permiso vigente. Pedile un PIN al administrador.','red');
+  try{if(window.AndroidAim&&typeof AndroidAim.start==='function')AndroidAim.start(Number(AIM_REMOTE.expiresAt));}catch(e){console.warn('No se pudo iniciar la guía flotante',e);}
   if(!aimIsEnabled()){
     M(`<h2>🔒 Activar líneas de puntería</h2>
       <div class=card>Ingresá el PIN de 8 dígitos que te entregó el administrador. El permiso vence automáticamente al terminar los días autorizados.</div>
