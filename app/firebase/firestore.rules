@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
     function notBanned() {
       return signedIn() && !exists(/databases/$(database)/documents/banned/$(request.auth.uid));
     }
@@ -11,6 +12,20 @@ service cloud.firestore {
     function isPlayer(room) {
       let r = get(/databases/$(database)/documents/rooms/$(room)).data;
       return r.h.u == request.auth.uid || (('g' in r) && r.g.u == request.auth.uid);
+    }
+
+    // El administrador solo puede consultar su propio registro; no puede autoasignarse permisos.
+    match /admins/{id} {
+      allow get: if signedIn() && request.auth.uid == id;
+      allow list, create, update, delete: if false;
+    }
+
+    // Control remoto de puntería: lectura del estado global para usuarios autenticados,
+    // y escritura únicamente para cuentas cuyo UID exista en admins/UID.
+    match /aim_control/{id} {
+      allow get: if signedIn() && id == 'global';
+      allow list: if false;
+      allow create, update, delete: if isAdmin() && id == 'global';
     }
 
     // Lista de baneados: solo se edita desde la consola de Firebase (que ignora las reglas).
