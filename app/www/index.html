@@ -3845,12 +3845,14 @@ let AIM_REMOTE={enabled:false,expiresAt:0,loaded:false}, AIM_REMOTE_UNSUB=null;
 function aimIsEnabled(){return !!AIM_REMOTE.enabled && Number(AIM_REMOTE.expiresAt)>Date.now();}
 function watchAimRemote(db){
   if(AIM_REMOTE_UNSUB)try{AIM_REMOTE_UNSUB();}catch(e){}
-  AIM_REMOTE_UNSUB=db.doc('aim_control/global').onSnapshot(function(snap){
+  const user=window.firebase&&firebase.apps.length?firebase.auth().currentUser:null;
+  if(!user){AIM_REMOTE={enabled:false,expiresAt:0,loaded:true};return;}
+  AIM_REMOTE_UNSUB=db.doc('aim_permissions/'+user.uid).onSnapshot(function(snap){
     AIM_REMOTE=snap.exists?Object.assign({loaded:true},snap.data()):{enabled:false,expiresAt:0,loaded:true};
-    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 La autorización de puntería venció o fue desactivada.','red');}
-  },function(err){AIM_REMOTE={enabled:false,expiresAt:0,loaded:true};console.warn('Control remoto de puntería no disponible',err);});
+    if(!aimIsEnabled() && G && G.cfg && G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu autorización de puntería venció o fue desactivada.','red');}
+  },function(err){AIM_REMOTE={enabled:false,expiresAt:0,loaded:true};console.warn('Permiso individual de puntería no disponible',err);});
 }
-setInterval(function(){if(AIM_REMOTE.enabled && !aimIsEnabled()){AIM_REMOTE.enabled=false;if(G&&G.cfg&&G.cfg.trainer){G.cfg.trainer=0;notif('🎯 El permiso de puntería venció.','red');}}},10000);
+setInterval(function(){if(AIM_REMOTE.enabled && !aimIsEnabled()){AIM_REMOTE.enabled=false;if(G&&G.cfg&&G.cfg.trainer){G.cfg.trainer=0;notif('🎯 Tu permiso de puntería venció.','red');}}},10000);
 
 const NOD = 'Esta función online no está disponible en esta versión del juego.';
 function fbListo(){ return !!(window.firebase && window.B8_FIREBASE_CONFIG && window.B8_FIREBASE_CONFIG.apiKey); }
