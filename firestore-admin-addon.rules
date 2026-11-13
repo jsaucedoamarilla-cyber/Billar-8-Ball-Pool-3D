@@ -29,6 +29,14 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Configuración global de las guías de puntería: lectura para jugadores autenticados,
+    // escritura exclusiva del administrador. El cliente compara expiresAt con la hora actual.
+    match /aim_control/{id} {
+      allow get: if signedIn() && id == 'global';
+      allow list: if false;
+      allow create, update, delete: if isAdmin() && id == 'global';
+    }
+
     match /banned/{id} {
       allow get: if isAdmin() || (signedIn() && request.auth.uid == id);
       allow list: if isAdmin();
