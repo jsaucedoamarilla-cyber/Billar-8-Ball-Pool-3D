@@ -1,6 +1,9 @@
 package com.juansaucedo.billar8;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -10,6 +13,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -17,6 +21,8 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_OVERLAY = 4812;
+    private static final int REQUEST_IMAGE_PICKER = 4813;
+    private ValueCallback<Uri[]> pendingFileCallback;
     private WebView web;
     private long pendingOverlayExpiry = 0;
 
@@ -36,7 +42,29 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         web.addJavascriptInterface(new AimBridge(), "AndroidAim");
         web.setWebViewClient(new WebViewClient());
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams) {
+                if (pendingFileCallback != null) {
+                    pendingFileCallback.onReceiveValue(null);
+                    pendingFileCallback = null;
+                }
+                pendingFileCallback = filePathCallback;
+                Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                pick.setType("image/*");
+                try {
+                    startActivityForResult(Intent.createChooser(pick, "Elegir foto de perfil"), REQUEST_IMAGE_PICKER);
+                } catch (Exception e) {
+                    pendingFileCallback.onReceiveValue(null);
+                    pendingFileCallback = null;
+                    Toast.makeText(MainActivity.this, "No se pudo abrir la galería.", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                return true;
+            }
+        });
         web.loadUrl("file:///android_asset/index.html");
         hideSystemBars();
     }
@@ -50,6 +78,17 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void stop() {
             runOnUiThread(() -> stopAimOverlay());
+        }
+
+        @JavascriptInterface
+        public void copyText(String value) {
+            runOnUiThread(() -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("ID del jugador", value == null ? "" : value));
+                    Toast.makeText(MainActivity.this, "ID del jugador copiado.", Toast.LENGTH_SHORT).show();
+                }
+            });
         }
 
         @JavascriptInterface
@@ -94,6 +133,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMAGE_PICKER) {
+            if (pendingFileCallback != null) {
+                Uri[] results = null;
+                if (resultCode == RESULT_OK && data != null) {
+                    Uri selected = data.getData();
+                    if (selected != null) results = new Uri[]{selected};
+                }
+                pendingFileCallback.onReceiveValue(results);
+                pendingFileCallback = null;
+            }
+            return;
+        }
         if (requestCode == REQUEST_OVERLAY) {
             if (Settings.canDrawOverlays(this) && pendingOverlayExpiry > System.currentTimeMillis()) {
                 long expiry = pendingOverlayExpiry;
