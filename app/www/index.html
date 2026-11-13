@@ -7342,21 +7342,42 @@ function quickStart(){
     <button class=b3 style="width:100%;padding:14px;margin-top:6px" onclick="X();startGame({mode:'nine',variant:'short',quick:1})">9️⃣ 9-Ball exprés</button>`);
 }
 
-function trainAim(){
-  if(!aimPermissionActive()) return notif('🎯 No tenés un permiso vigente. Pedile un PIN al administrador.','red');
-  if(!aimIsEnabled()){
-    M(`<h2>🔒 Activar líneas de puntería</h2>
-      <div class=card>Ingresá el PIN de 8 dígitos que te entregó el administrador. El permiso vence automáticamente al terminar los días autorizados.</div>
-      <input id="aimPinInput" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN de 8 dígitos" style="width:100%;padding:13px;font-size:20px;letter-spacing:5px;text-align:center">
-      <p id="aimPinMsg" class="muted"></p>
-      <button class=b1 style="width:100%;padding:12px" onclick="verifyAimPin()">🔓 Validar PIN</button>`);
-    return;
-  }
-  try{if(window.AndroidAim&&typeof AndroidAim.start==='function')AndroidAim.start(Number(AIM_REMOTE.expiresAt));}catch(e){console.warn('No se pudo iniciar la guía flotante',e);}
-  showAimExercises();
+async function trainAim(){
+  try{await dbq();}catch(e){}
+  const playerUid=String(await uid()||'');
+  const safeUid=playerUid.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const active=aimPermissionActive();
+  const requestText='Hola, quiero solicitar la habilitación de las líneas de puntería de BILLAR 8 PRO. Mi ID de jugador es: '+(playerUid||'No disponible')+'. ¿Podés habilitarme por favor?';
+  const requestUrl='https://wa.me/595984363598?text='+encodeURIComponent(requestText);
+  M(`<h2>🎯 Activar líneas de puntería</h2>
+    <div class=card>Ingresá el PIN de 8 dígitos que te entregó el administrador. La habilitación dura los días autorizados.</div>
+    <label style="display:block;margin:8px 0 4px;color:#ffd23f">Tu ID de jugador</label>
+    <input id="aimPlayerUid" readonly value="${safeUid}" style="width:100%;padding:11px;font-size:12px;user-select:text">
+    <button class=b5 style="width:100%;margin:5px 0" onclick="copyMyAimUid()">📋 Copiar mi ID</button>
+    <input id="aimPinInput" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN de 8 dígitos" style="width:100%;padding:13px;font-size:20px;letter-spacing:5px;text-align:center">
+    <p id="aimPinMsg" class="muted">${active?'Tu permiso está activo. Ingresá el PIN para encender la línea.':'Todavía no hay una habilitación activa para tu cuenta. Podés solicitarla por WhatsApp.'}</p>
+    <button class=b1 style="width:100%;padding:12px" onclick="verifyAimPin()">🔓 Validar PIN</button>
+    <button class=b2 style="width:100%;padding:12px;margin-top:7px" onclick="requestAimAccess()">💬 Solicitar habilitación por WhatsApp</button>
+    <p class=muted style="font-size:11px;text-align:center">Soporte: 0984 363598</p>`);
+}
+async function copyMyAimUid(){
+  const field=$('aimPlayerUid'),value=String(field?.value||'');
+  if(!value){notif('No se pudo obtener tu ID. Conectate a Internet y probá otra vez.','red');return;}
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);
+    else{field.focus();field.select();if(!document.execCommand('copy'))throw Error('copy failed');}
+    notif('ID de jugador copiado.','green');
+  }catch(e){field.focus();field.select();notif('Mantené presionado el ID para copiarlo.','red');}
+}
+function requestAimAccess(){
+  const playerUid=String($('aimPlayerUid')?.value||'');
+  const message='Hola, quiero solicitar la habilitación de las líneas de puntería de BILLAR 8 PRO. Mi ID de jugador es: '+(playerUid||'No disponible')+'. ¿Podés habilitarme por favor?';
+  try{if(window.AndroidAim&&typeof AndroidAim.requestAccess==='function'){AndroidAim.requestAccess(message);return;}}catch(e){}
+  window.location.href='https://wa.me/595984363598?text='+encodeURIComponent(message);
 }
 async function verifyAimPin(){
   const field=$('aimPinInput'),msgEl=$('aimPinMsg'),pin=String(field?.value||'').trim();
+  if(!aimPermissionActive()){if(msgEl)msgEl.textContent='Tu cuenta todavía no tiene habilitación. Copiá tu ID y solicitá el acceso por WhatsApp.';return;}
   if(Date.now()<AIM_PIN_LOCK_UNTIL){if(msgEl)msgEl.textContent='Demasiados intentos. Esperá '+Math.ceil((AIM_PIN_LOCK_UNTIL-Date.now())/1000)+' segundos.';return;}
   if(!/^\\d{8}$/.test(pin)){if(msgEl)msgEl.textContent='Ingresá los 8 números del PIN.';return;}
   try{
